@@ -1,6 +1,7 @@
 """
 Streamlit Visualization & Simulation Application for Student Performance Prediction.
-Loads trained models and provides visualization and prediction capabilities.
+Enhanced with comprehensive visualizations and dynamic feature-based prediction form.
+Only shows input fields for features that were used during model training.
 """
 
 import streamlit as st
@@ -15,13 +16,26 @@ import pickle
 import json
 
 warnings.filterwarnings('ignore')
-
-# Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data import FeaturePreprocessor
 
-# Page configuration
+from src.data.data_mappings import (
+    get_readable_value,
+    get_feature_description,
+    format_dataframe_for_display,
+    MARITAL_STATUS,
+    GENDER,
+    YES_NO,
+    ATTENDANCE,
+    PARENT_QUALIFICATION,
+    PARENT_OCCUPATION
+)
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
 st.set_page_config(
     page_title="Student Performance - Visualizzazione",
     page_icon="📊",
@@ -29,573 +43,480 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Color palette
+COLORS = {
+    'primary': '#1E88E5', 'secondary': '#43A047', 'warning': '#FB8C00',
+    'danger': '#E53935', 'success': '#00897B', 'info': '#5E35B1',
+    'dropout': '#E53935', 'enrolled': '#FB8C00', 'graduate': '#43A047', 'grid': '#E0E0E0'
+}
+
+CLASS_COLORS = [COLORS['dropout'], COLORS['enrolled'], COLORS['graduate']]
+CLASS_NAMES_LIST = ["Dropout", "Enrolled", "Graduate"]
+MODELS_DIR = Path("trained_models")
+
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1E88E5;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #666;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-    }
+    .main-header { font-size: 2.5rem; font-weight: bold; color: #1E88E5; text-align: center; margin-bottom: 0.5rem; }
+    .sub-header { font-size: 1.2rem; color: #666; text-align: center; margin-bottom: 2rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# Models directory
-MODELS_DIR = Path("trained_models")
+# ============================================================================
+# FEATURE CONFIGURATION
+# ============================================================================
 
-# Class names
-CLASS_NAMES_LIST = ["Dropout", "Enrolled", "Graduate"]
+FEATURE_CONFIG = {
+    'nacionality': {'display': 'Nazionalità', 'cat': 'Personali', 'type': 'number', 'min': 1, 'max': 110, 'default': 1},
+    "mother's qualification": {'display': 'Titolo Madre', 'cat': 'Famiglia', 'type': 'number', 'min': 1, 'max': 44, 'default': 1},
+    "father's qualification": {'display': 'Titolo Padre', 'cat': 'Famiglia', 'type': 'number', 'min': 1, 'max': 44, 'default': 1},
+    "mother's occupation": {'display': 'Lavoro Madre', 'cat': 'Famiglia', 'type': 'number', 'min': 0, 'max': 200, 'default': 0},
+    "father's occupation": {'display': 'Lavoro Padre', 'cat': 'Famiglia', 'type': 'number', 'min': 0, 'max': 200, 'default': 0},
+    'admission grade': {'display': 'Voto Ammissione', 'cat': 'Accademici', 'type': 'slider', 'min': 0.0, 'max': 200.0, 'default': 120.0},
+    'previous qualification': {'display': 'Qualifica Precedente', 'cat': 'Accademici', 'type': 'number', 'min': 1, 'max': 43, 'default': 1},
+    'previous qualification (grade)': {'display': 'Voto Qualifica Prec.', 'cat': 'Accademici', 'type': 'slider', 'min': 0.0, 'max': 200.0, 'default': 120.0},
+    'application mode': {'display': 'Modalità Iscrizione', 'cat': 'Accademici', 'type': 'number', 'min': 1, 'max': 57, 'default': 1},
+    'application order': {'display': 'Ordine Preferenza', 'cat': 'Accademici', 'type': 'number', 'min': 0, 'max': 9, 'default': 1},
+    'course': {'display': 'Corso', 'cat': 'Accademici', 'type': 'number', 'min': 1, 'max': 10000, 'default': 33},
+    'curricular units 1st sem (credited)': {'display': '1°Sem Crediti', 'cat': 'Perf. 1° Sem', 'type': 'number', 'min': 0, 'max': 30, 'default': 0},
+    'curricular units 1st sem (enrolled)': {'display': '1°Sem Iscritte', 'cat': 'Perf. 1° Sem', 'type': 'number', 'min': 0, 'max': 30, 'default': 6},
+    'curricular units 1st sem (evaluations)': {'display': '1°Sem Valutazioni', 'cat': 'Perf. 1° Sem', 'type': 'number', 'min': 0, 'max': 50, 'default': 6},
+    'curricular units 1st sem (approved)': {'display': '1°Sem Approvate', 'cat': 'Perf. 1° Sem', 'type': 'number', 'min': 0, 'max': 30, 'default': 5},
+    'curricular units 1st sem (grade)': {'display': '1°Sem Media Voti', 'cat': 'Perf. 1° Sem', 'type': 'slider', 'min': 0.0, 'max': 20.0, 'default': 12.0},
+    'curricular units 1st sem (without evaluations)': {'display': '1°Sem Senza Valut.', 'cat': 'Perf. 1° Sem', 'type': 'number', 'min': 0, 'max': 20, 'default': 0},
+    'curricular units 2nd sem (credited)': {'display': '2°Sem Crediti', 'cat': 'Perf. 2° Sem', 'type': 'number', 'min': 0, 'max': 30, 'default': 0},
+    'curricular units 2nd sem (enrolled)': {'display': '2°Sem Iscritte', 'cat': 'Perf. 2° Sem', 'type': 'number', 'min': 0, 'max': 30, 'default': 6},
+    'curricular units 2nd sem (evaluations)': {'display': '2°Sem Valutazioni', 'cat': 'Perf. 2° Sem', 'type': 'number', 'min': 0, 'max': 50, 'default': 6},
+    'curricular units 2nd sem (approved)': {'display': '2°Sem Approvate', 'cat': 'Perf. 2° Sem', 'type': 'number', 'min': 0, 'max': 30, 'default': 5},
+    'curricular units 2nd sem (grade)': {'display': '2°Sem Media Voti', 'cat': 'Perf. 2° Sem', 'type': 'slider', 'min': 0.0, 'max': 20.0, 'default': 12.0},
+    'curricular units 2nd sem (without evaluations)': {'display': '2°Sem Senza Valut.', 'cat': 'Perf. 2° Sem', 'type': 'number', 'min': 0, 'max': 20, 'default': 0},
+    'unemployment rate': {'display': 'Tasso Disoccupazione', 'cat': 'Economici', 'type': 'slider', 'min': 0.0, 'max': 30.0, 'default': 10.0},
+    'inflation rate': {'display': 'Tasso Inflazione', 'cat': 'Economici', 'type': 'slider', 'min': -5.0, 'max': 10.0, 'default': 1.0},
+    'gdp': {'display': 'PIL', 'cat': 'Economici', 'type': 'slider', 'min': -10.0, 'max': 10.0, 'default': 1.0},
+    'age at enrollment': {
+        'display': 'Età Iscrizione',
+        'cat': 'Personali',
+        'type': 'number',
+        'min': 17,
+        'max': 70,
+        'default': 20
+    },
+    'marital status': {
+        'display': 'Stato Civile',
+        'cat': 'Personali',
+        'type': 'select',
+        'opts': list(MARITAL_STATUS.keys()),
+        'labels': MARITAL_STATUS,
+        'default': 1
+    },
+    'gender': {
+        'display': 'Genere',
+        'cat': 'Personali',
+        'type': 'select',
+        'opts': list(GENDER.keys()),
+        'labels': GENDER,
+        'default': 0
+    },
+    'displaced': {
+        'display': 'Fuori Sede',
+        'cat': 'Personali',
+        'type': 'select',
+        'opts': list(YES_NO.keys()),
+        'labels': YES_NO,
+        'default': 0
+    },
+    'international': {
+        'display': 'Internazionale',
+        'cat': 'Personali',
+        'type': 'select',
+        'opts': list(YES_NO.keys()),
+        'labels': YES_NO,
+        'default': 0
+    },
+    'scholarship holder': {
+        'display': 'Borsa di Studio',
+        'cat': 'Finanziari',
+        'type': 'select',
+        'opts': list(YES_NO.keys()),
+        'labels': YES_NO,
+        'default': 0
+    },
+    'tuition fees up to date': {
+        'display': 'Tasse Pagate',
+        'cat': 'Finanziari',
+        'type': 'select',
+        'opts': list(YES_NO.keys()),
+        'labels': YES_NO,
+        'default': 1
+    },
+    'debtor': {
+        'display': 'Debitore',
+        'cat': 'Finanziari',
+        'type': 'select',
+        'opts': list(YES_NO.keys()),
+        'labels': YES_NO,
+        'default': 0
+    },
+    'educational special needs': {
+        'display': 'Bisogni Speciali',
+        'cat': 'Finanziari',
+        'type': 'select',
+        'opts': list(YES_NO.keys()),
+        'labels': YES_NO,
+        'default': 0
+    },
+    'daytime/evening attendance': {
+        'display': 'Frequenza',
+        'cat': 'Accademici',
+        'type': 'select',
+        'opts': list(ATTENDANCE.keys()),
+        'labels': ATTENDANCE,
+        'default': 1
+    },
+}
 
+CATEGORY_ORDER = ['Personali', 'Famiglia', 'Accademici', 'Finanziari', 'Perf. 1° Sem', 'Perf. 2° Sem', 'Economici', 'Altro']
+CATEGORY_ICONS = {'Personali': '👤', 'Famiglia': '👨‍👩‍👧', 'Accademici': '📚', 'Finanziari': '💰', 'Perf. 1° Sem': '📊', 'Perf. 2° Sem': '📈', 'Economici': '📉', 'Altro': '📌'}
+
+# ============================================================================
+# SESSION STATE & DATA LOADING
+# ============================================================================
 
 def init_session_state():
-    """Initialize session state variables."""
-    defaults = {
-        'model_loaded': False,
-        'model': None,
-        'metadata': None,
-        'preprocessor_data': None,
-        'available_experiments': []
-    }
-    for key, value in defaults.items():
+    for key in ['model_loaded', 'model', 'metadata', 'preprocessor_data']:
         if key not in st.session_state:
-            st.session_state[key] = value
-
+            st.session_state[key] = False if key == 'model_loaded' else None
 
 def get_available_experiments():
-    """Get list of available trained model experiments."""
-    if not MODELS_DIR.exists():
-        return []
-
+    if not MODELS_DIR.exists(): return []
     experiments = []
     for exp_dir in MODELS_DIR.iterdir():
-        if exp_dir.is_dir():
-            metadata_path = exp_dir / "metadata.json"
-            if metadata_path.exists():
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                experiments.append({
-                    'path': exp_dir,
-                    'name': metadata.get('experiment_name', exp_dir.name),
-                    'timestamp': metadata.get('timestamp', 'Unknown'),
-                    'best_model': metadata.get('best_model_name', 'Unknown'),
-                    'f1_macro': metadata.get('test_f1_macro', 0),
-                    'accuracy': metadata.get('test_accuracy', 0)
-                })
-
+        if exp_dir.is_dir() and (exp_dir / "metadata.json").exists():
+            with open(exp_dir / "metadata.json", 'r') as f:
+                meta = json.load(f)
+            experiments.append({'path': exp_dir, 'name': meta.get('experiment_name', exp_dir.name),
+                'timestamp': meta.get('timestamp', ''), 'best_model': meta.get('best_model_name', ''),
+                'f1_macro': meta.get('test_f1_macro', 0), 'accuracy': meta.get('test_accuracy', 0),
+                'num_features': meta.get('num_features_selected', len(meta.get('feature_names', [])))})
     return sorted(experiments, key=lambda x: x['timestamp'], reverse=True)
 
-
 def load_experiment(exp_path):
-    """Load a trained experiment."""
     exp_path = Path(exp_path)
-
-    # Load metadata
-    with open(exp_path / "metadata.json", 'r') as f:
-        metadata = json.load(f)
-
-    # Load model
-    with open(exp_path / "best_model.pkl", 'rb') as f:
-        model = pickle.load(f)
-
-    # Load preprocessor data
-    with open(exp_path / "preprocessor.pkl", 'rb') as f:
-        preprocessor_data = pickle.load(f)
-
-    st.session_state.model = model
-    st.session_state.metadata = metadata
-    st.session_state.preprocessor_data = preprocessor_data
-    st.session_state.model_loaded = True
-
+    with open(exp_path / "metadata.json", 'r') as f: metadata = json.load(f)
+    with open(exp_path / "best_model.pkl", 'rb') as f: model = pickle.load(f)
+    with open(exp_path / "preprocessor.pkl", 'rb') as f: preprocessor_data = pickle.load(f)
+    st.session_state.model, st.session_state.metadata = model, metadata
+    st.session_state.preprocessor_data, st.session_state.model_loaded = preprocessor_data, True
     return metadata
 
+# ============================================================================
+# FEATURE HANDLING
+# ============================================================================
 
-def plot_confusion_matrix(cm, class_names, title="Matrice di Confusione"):
-    """Plot confusion matrix."""
-    fig, ax = plt.subplots(figsize=(8, 6))
+def get_feature_config(col_name):
+    col_lower = col_name.lower().strip()
+    if col_lower in FEATURE_CONFIG: return FEATURE_CONFIG[col_lower]
+    for key, cfg in FEATURE_CONFIG.items():
+        if key in col_lower or col_lower in key: return cfg
+    return {'display': col_name, 'cat': 'Altro', 'type': 'number', 'min': -1000, 'max': 1000, 'default': 0}
 
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt='d',
-        cmap='Blues',
-        xticklabels=class_names,
-        yticklabels=class_names,
-        ax=ax
-    )
+def get_active_features(metadata, preprocessor_data):
+    return metadata.get('selected_features') or metadata.get('feature_names') or preprocessor_data.get('feature_names', [])
 
-    ax.set_xlabel('Etichetta Predetta', fontsize=12)
-    ax.set_ylabel('Etichetta Vera', fontsize=12)
-    ax.set_title(title, fontsize=14, fontweight='bold')
+def organize_by_category(features):
+    cats = {}
+    for f in features:
+        cfg = get_feature_config(f)
+        cat = cfg.get('cat', 'Altro')
+        if cat not in cats: cats[cat] = []
+        cats[cat].append({'col': f, 'cfg': cfg})
+    return {c: cats[c] for c in CATEGORY_ORDER if c in cats}
 
-    plt.tight_layout()
-    return fig
+def render_input(feat_info, prefix=""):
+    cfg, col = feat_info['cfg'], feat_info['col']
+    key = f"{prefix}_{col}"
+    t = cfg.get('type', 'number')
+    help_text = get_feature_description(col)
 
+    if t == 'select':
+        opts = cfg.get('opts', [0, 1])
+        labels = cfg.get('labels', {o: str(o) for o in opts})
+        default_idx = opts.index(cfg.get('default', opts[0])) if cfg.get('default') in opts else 0
+        return col, st.selectbox(cfg.get('display', col), opts, default_idx, format_func=lambda x: labels.get(x, str(x)), key=key, help=help_text)
+    elif t == 'slider':
+        return col, st.slider(cfg.get('display', col), float(cfg.get('min', 0)), float(cfg.get('max', 100)), float(cfg.get('default', 50)), key=key, help=help_text)
+    else:
+        return col, st.number_input(cfg.get('display', col), cfg.get('min', 0), cfg.get('max', 100), cfg.get('default', 0), key=key, help=help_text)
 
-def plot_model_comparison(comparison_data, metric='F1 (Macro)'):
-    """Plot model comparison from metadata."""
-    df = pd.DataFrame(comparison_data)
+# ============================================================================
+# VISUALIZATIONS
+# ============================================================================
 
+def setup_style():
+    plt.rcParams.update({'figure.facecolor': 'white', 'axes.facecolor': 'white', 'axes.grid': True,
+        'grid.alpha': 0.3, 'grid.color': COLORS['grid'], 'axes.labelsize': 12, 'axes.titlesize': 14, 'axes.titleweight': 'bold'})
+
+def plot_comparison(data, metric='F1 (Macro)'):
+    setup_style()
+    df = pd.DataFrame(data).sort_values(metric, ascending=True)
     fig, ax = plt.subplots(figsize=(12, 6))
-
-    df_sorted = df.sort_values(metric, ascending=True)
-    colors = sns.color_palette("viridis", len(df_sorted))
-
-    bars = ax.barh(df_sorted['Model'], df_sorted[metric], color=colors, edgecolor='black')
-
-    for bar, val in zip(bars, df_sorted[metric]):
-        ax.text(val + 0.005, bar.get_y() + bar.get_height() / 2,
-                f'{val:.4f}', va='center', fontsize=10)
-
-    ax.set_xlabel(metric, fontsize=12)
-    ax.set_title(f'Confronto Modelli - {metric}', fontsize=14, fontweight='bold')
-    ax.set_xlim(0, df_sorted[metric].max() * 1.15)
-
+    colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(df)))
+    bars = ax.barh(df['Model'], df[metric], color=colors, edgecolor='white', linewidth=2, height=0.7)
+    for bar, val in zip(bars, df[metric]):
+        ax.text(val + 0.008, bar.get_y() + bar.get_height()/2, f'{val:.4f}', va='center', fontsize=11, fontweight='bold')
+    ax.set_xlabel(metric, fontsize=12, fontweight='bold')
+    ax.set_title(f'Confronto Modelli - {metric}', fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlim(0, df[metric].max() * 1.15)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
     plt.tight_layout()
     return fig
 
+def plot_per_class(data):
+    setup_style()
+    df = pd.DataFrame(data)
+    metrics = [m for m in ['F1 Dropout', 'F1 Enrolled', 'F1 Graduate'] if m in df.columns]
+    if not metrics: return None
+    fig, ax = plt.subplots(figsize=(14, 7))
+    x, width = np.arange(len(df)), 0.25
+    for i, m in enumerate(metrics):
+        bars = ax.bar(x + (i-1)*width, df[m], width, label=m.replace('F1 ', ''), color=CLASS_COLORS[i], edgecolor='white')
+        for bar in bars: ax.annotate(f'{bar.get_height():.2f}', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()), xytext=(0, 3), textcoords="offset points", ha='center', fontsize=8, fontweight='bold')
+    ax.set_xlabel('Modello', fontsize=12, fontweight='bold'); ax.set_ylabel('F1 Score', fontsize=12, fontweight='bold')
+    ax.set_title('Performance per Classe', fontsize=14, fontweight='bold', pad=20)
+    ax.set_xticks(x); ax.set_xticklabels(df['Model'], rotation=45, ha='right')
+    ax.legend(title='Classe'); ax.set_ylim(0, 1.1)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+    plt.tight_layout()
+    return fig
 
-def create_feature_vector_from_input(user_inputs, feature_names, preprocessor_data):
-    """
-    Create a properly formatted feature vector from user inputs.
-    Maps user inputs to the correct feature positions and applies preprocessing.
-    """
-    # Create a DataFrame with all features initialized to median/mode values
-    X_template = preprocessor_data['X_train'].copy()
+def plot_heatmap(data):
+    setup_style()
+    df = pd.DataFrame(data)
+    cols = [c for c in ['Accuracy', 'F1 (Macro)', 'F1 (Weighted)', 'F1 Dropout', 'F1 Enrolled', 'F1 Graduate'] if c in df.columns]
+    if not cols: return None
+    fig, ax = plt.subplots(figsize=(12, 8))
+    sns.heatmap(df.set_index('Model')[cols], annot=True, fmt='.3f', cmap='RdYlGn', center=0.5, linewidths=2, linecolor='white', ax=ax)
+    ax.set_title('Mappa Metriche', fontsize=14, fontweight='bold', pad=20)
+    plt.xticks(rotation=45, ha='right'); plt.tight_layout()
+    return fig
 
-    # Get median values for numerical features and mode for categorical
-    feature_values = {}
-    for col in X_template.columns:
-        if X_template[col].dtype in ['int64', 'float64']:
-            feature_values[col] = X_template[col].median()
+def plot_radar(data):
+    setup_style()
+    df = pd.DataFrame(data)
+    metrics = [m for m in ['Accuracy', 'F1 (Macro)', 'F1 Dropout', 'F1 Enrolled', 'F1 Graduate'] if m in df.columns]
+    if len(metrics) < 3: return None
+    angles = np.linspace(0, 2*np.pi, len(metrics), endpoint=False).tolist() + [0]
+    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
+    colors = plt.cm.Set2(np.linspace(0, 1, len(df)))
+    for idx, (_, row) in enumerate(df.iterrows()):
+        vals = [row[m] for m in metrics] + [row[metrics[0]]]
+        ax.plot(angles, vals, 'o-', linewidth=2, label=row['Model'], color=colors[idx])
+        ax.fill(angles, vals, alpha=0.15, color=colors[idx])
+    ax.set_xticks(angles[:-1]); ax.set_xticklabels(metrics, fontsize=10)
+    ax.set_ylim(0, 1); ax.set_title('Radar Multi-Metrica', fontsize=14, fontweight='bold', pad=20)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0)); plt.tight_layout()
+    return fig
+
+def plot_importance(imp_dict, top_n=15):
+    setup_style()
+    if not imp_dict: return None
+    sorted_f = sorted(imp_dict.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    features, values = [f[0] for f in sorted_f][::-1], [f[1] for f in sorted_f][::-1]
+    fig, ax = plt.subplots(figsize=(12, 8))
+    colors = plt.cm.Blues(np.linspace(0.4, 0.9, len(features)))
+    bars = ax.barh(range(len(features)), values, color=colors, edgecolor='white')
+    ax.set_yticks(range(len(features))); ax.set_yticklabels(features, fontsize=10)
+    for bar, val in zip(bars, values): ax.text(val + 0.002, bar.get_y() + bar.get_height()/2, f'{val:.4f}', va='center', fontsize=9, fontweight='bold')
+    ax.set_xlabel('Importanza', fontsize=12, fontweight='bold')
+    ax.set_title(f'Top {len(features)} Features', fontsize=14, fontweight='bold', pad=20)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False); plt.tight_layout()
+    return fig
+
+def plot_probs(probs, names):
+    setup_style()
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bars = ax.bar(names, probs, color=CLASS_COLORS, edgecolor='white', linewidth=3, width=0.6)
+    for bar, p in zip(bars, probs):
+        bar.set_alpha(0.3 + 0.7*p)
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02, f'{p*100:.1f}%', ha='center', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Probabilità', fontsize=12, fontweight='bold')
+    ax.set_title('Distribuzione Probabilità', fontsize=14, fontweight='bold', pad=20)
+    ax.set_ylim(0, 1.15); ax.axhline(y=0.333, color='gray', linestyle='--', alpha=0.5, label='Baseline 33%')
+    ax.legend(); ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False); plt.tight_layout()
+    return fig
+
+def plot_dashboard(meta):
+    setup_style()
+    fig = plt.figure(figsize=(16, 10))
+    data = meta.get('comparison_results', [])
+    df = pd.DataFrame(data)
+    ax1 = fig.add_subplot(2, 3, 1)
+    ax1.text(0.5, 0.7, '🏆', fontsize=50, ha='center', transform=ax1.transAxes)
+    ax1.text(0.5, 0.4, meta.get('best_model_name', 'N/A'), fontsize=14, fontweight='bold', ha='center', transform=ax1.transAxes)
+    ax1.text(0.5, 0.2, f"F1: {meta.get('test_f1_macro', 0):.4f}", fontsize=12, ha='center', transform=ax1.transAxes)
+    ax1.set_title('Miglior Modello', fontsize=14, fontweight='bold'); ax1.axis('off')
+    if 'Accuracy' in df.columns:
+        ax2 = fig.add_subplot(2, 3, 2); dfs = df.sort_values('Accuracy', ascending=True)
+        ax2.barh(dfs['Model'], dfs['Accuracy'], color=plt.cm.Greens(np.linspace(0.3, 0.9, len(dfs))), edgecolor='white')
+        ax2.set_xlabel('Accuracy'); ax2.set_title('Accuracy', fontweight='bold'); ax2.set_xlim(0, 1)
+    if 'F1 (Macro)' in df.columns:
+        ax3 = fig.add_subplot(2, 3, 3); dfs = df.sort_values('F1 (Macro)', ascending=True)
+        ax3.barh(dfs['Model'], dfs['F1 (Macro)'], color=plt.cm.Blues(np.linspace(0.3, 0.9, len(dfs))), edgecolor='white')
+        ax3.set_xlabel('F1 (Macro)'); ax3.set_title('F1 Macro', fontweight='bold'); ax3.set_xlim(0, 1)
+    ax4 = fig.add_subplot(2, 1, 2)
+    metrics = [m for m in ['F1 Dropout', 'F1 Enrolled', 'F1 Graduate'] if m in df.columns]
+    if metrics:
+        x, width = np.arange(len(df)), 0.25
+        for i, m in enumerate(metrics): ax4.bar(x + (i-1)*width, df[m], width, label=m.replace('F1 ', ''), color=CLASS_COLORS[i], edgecolor='white')
+        ax4.set_xlabel('Modello'); ax4.set_ylabel('F1'); ax4.set_title('F1 per Classe', fontweight='bold')
+        ax4.set_xticks(x); ax4.set_xticklabels(df['Model'], rotation=45, ha='right'); ax4.legend(); ax4.set_ylim(0, 1)
+    plt.suptitle('Dashboard Performance', fontsize=16, fontweight='bold', y=1.02); plt.tight_layout()
+    return fig
+
+# ============================================================================
+# PREDICTION
+# ============================================================================
+
+def create_features(inputs, preprocessor_data):
+    X_tmpl = preprocessor_data['X_train'].copy()
+    vals = {c: (X_tmpl[c].median() if X_tmpl[c].dtype in ['int64','float64'] else 0) for c in X_tmpl.columns}
+    for k, v in inputs.items():
+        if k in vals: vals[k] = v
         else:
-            feature_values[col] = X_template[col].mode()[0] if len(X_template[col].mode()) > 0 else 0
+            for c in vals:
+                if c.lower() == k.lower(): vals[c] = v; break
+    X = pd.DataFrame([vals])
+    prep = FeaturePreprocessor(scaling=preprocessor_data.get('scaling', 'standard'))
+    prep.fit(X_tmpl)
+    return prep.transform(X).values
 
-    # Update with user inputs (mapping common feature names)
-    feature_mapping = {
-        'age': 'Age at enrollment',
-        'marital_status': 'Marital status',
-        'admission_grade': 'Admission grade',
-        'prev_qualification_grade': 'Previous qualification (grade)',
-        'scholarship': 'Scholarship holder',
-        'debtor': 'Debtor',
-        'tuition_up_to_date': 'Tuition fees up to date',
-        'gender': 'Gender',
-        'units_1st_sem': 'Curricular units 1st sem (approved)',
-        'units_2nd_sem': 'Curricular units 2nd sem (approved)'
-    }
-
-    for input_key, feature_name in feature_mapping.items():
-        if input_key in user_inputs:
-            # Find the actual column name (case-insensitive partial match)
-            matching_cols = [col for col in X_template.columns
-                           if feature_name.lower() in col.lower()]
-            if matching_cols:
-                feature_values[matching_cols[0]] = user_inputs[input_key]
-
-    # Create DataFrame with single row
-    X_input = pd.DataFrame([feature_values])
-
-    # Apply the same preprocessing as during training
-    preprocessor = FeaturePreprocessor(
-        scaling=preprocessor_data.get('scaling', 'standard')
-    )
-
-    # Fit on training data and transform input
-    preprocessor.fit(X_template)
-    X_scaled = preprocessor.transform(X_input)
-
-    return X_scaled.values
-
+# ============================================================================
+# MAIN APP
+# ============================================================================
 
 def main():
     init_session_state()
+    st.markdown('<p class="main-header">📊 Visualizzazione & Simulazione</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Analizza modelli e simula predizioni</p>', unsafe_allow_html=True)
 
-    # Header
-    st.markdown('<p class="main-header">📊 Visualizzazione & Simulazione - Student Performance</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Analisi risultati e predizioni su nuovi studenti</p>', unsafe_allow_html=True)
-
-    # Sidebar
     with st.sidebar:
-        st.image("https://img.icons8.com/color/96/000000/graph.png", width=80)
-        st.title("Carica Modello")
-
-        # Get available experiments
-        experiments = get_available_experiments()
-        st.session_state.available_experiments = experiments
-
-        if len(experiments) == 0:
-            st.warning("⚠️ Nessun modello trovato. Addestra prima un modello usando l'app di training.")
-        else:
-            st.success(f"✅ {len(experiments)} modelli disponibili")
-
-            # Select experiment
-            exp_options = [
-                f"{exp['name']} - {exp['timestamp']} (F1: {exp['f1_macro']:.4f})"
-                for exp in experiments
-            ]
-
-            selected_idx = st.selectbox(
-                "Seleziona esperimento:",
-                range(len(exp_options)),
-                format_func=lambda i: exp_options[i]
-            )
-
-            if st.button("Carica Modello", type="primary"):
-                with st.spinner("Caricamento modello..."):
-                    metadata = load_experiment(experiments[selected_idx]['path'])
-                st.success(f"✅ Modello caricato: **{metadata['best_model_name']}**")
-
-        st.markdown("---")
-
+        st.title("📂 Esperimenti")
+        exps = get_available_experiments()
+        if not exps: st.warning("Nessun esperimento."); st.stop()
+        opts = {f"{e['name']} ({e['timestamp']})": e['path'] for e in exps}
+        sel = st.selectbox("Seleziona:", list(opts.keys()))
+        if st.button("📂 Carica", type="primary", use_container_width=True):
+            load_experiment(opts[sel]); st.success("✅ Caricato!")
         if st.session_state.model_loaded:
-            st.markdown("### Modello Caricato")
-            st.info(f"""
-            **Nome**: {st.session_state.metadata['best_model_name']}
-            
-            **Esperimento**: {st.session_state.metadata['experiment_name']}
-            
-            **Accuracy**: {st.session_state.metadata['test_accuracy']:.4f}
-            
-            **F1 Macro**: {st.session_state.metadata['test_f1_macro']:.4f}
-            """)
+            st.markdown("---"); m = st.session_state.metadata
+            st.metric("Modello", m.get('best_model_name', 'N/A'))
+            st.metric("F1 Macro", f"{m.get('test_f1_macro', 0):.4f}")
+            st.metric("Features", m.get('num_features_selected', 'N/A'))
 
     if not st.session_state.model_loaded:
-        st.info("👈 Carica un modello dalla sidebar per iniziare")
+        st.info("👈 Carica un esperimento"); st.stop()
 
-        # Show available models table
-        if len(st.session_state.available_experiments) > 0:
-            st.markdown("---")
-            st.subheader("Modelli Disponibili")
+    meta = st.session_state.metadata
+    tab1, tab2, tab3, tab4 = st.tabs(["📈 Performance", "🔮 Predizione", "📋 Dettagli", "🎨 Dashboard"])
 
-            experiments_df = pd.DataFrame([
-                {
-                    'Nome': exp['name'],
-                    'Timestamp': exp['timestamp'],
-                    'Modello': exp['best_model'],
-                    'F1 Macro': f"{exp['f1_macro']:.4f}",
-                    'Accuracy': f"{exp['accuracy']:.4f}"
-                }
-                for exp in st.session_state.available_experiments
-            ])
-
-            st.dataframe(experiments_df, use_container_width=True)
-
-        st.stop()
-
-    # Main tabs
-    tab1, tab2, tab3 = st.tabs([
-        "📈 Risultati Modello",
-        "🔮 Simulatore Predizioni",
-        "📋 Info Modello"
-    ])
-
-    # TAB 1: Model Results
     with tab1:
-        st.header("📈 Risultati e Performance del Modello")
+        st.header("📈 Analisi Performance")
+        data = meta.get('comparison_results', [])
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("🏆 Modello", meta.get('best_model_name', 'N/A'))
+        c2.metric("📊 F1", f"{meta.get('test_f1_macro', 0):.4f}")
+        c3.metric("🎯 Acc", f"{meta.get('test_accuracy', 0):.4f}")
+        c4.metric("📋 Feat", meta.get('num_features_selected', 'N/A'))
+        st.markdown("---")
+        c1, c2 = st.columns(2)
+        with c1: st.pyplot(plot_comparison(data, 'F1 (Macro)')); plt.close()
+        with c2: st.pyplot(plot_comparison(data, 'Accuracy')); plt.close()
+        st.markdown("---"); fig = plot_per_class(data)
+        if fig: st.pyplot(fig); plt.close()
+        st.markdown("---"); fig = plot_heatmap(data)
+        if fig: st.pyplot(fig); plt.close()
+        st.markdown("---"); fig = plot_radar(data)
+        if fig: st.pyplot(fig); plt.close()
+        if meta.get('feature_importances'):
+            st.markdown("---"); fig = plot_importance(meta['feature_importances'])
+            if fig: st.pyplot(fig); plt.close()
+        st.markdown("---"); st.dataframe(pd.DataFrame(data), use_container_width=True)
 
-        metadata = st.session_state.metadata
+    with tab2:
+        st.header("🔮 Simulazione Predizione")
+        active = get_active_features(meta, st.session_state.preprocessor_data)
+        if not active: st.error("❌ Features non trovate"); st.stop()
 
-        # Key metrics
-        st.subheader("Metriche Principali")
-        col1, col2, col3, col4 = st.columns(4)
+        total_feat = meta.get('num_features_total', len(active))
+        st.info(f"**Modello:** {meta.get('best_model_name', 'N/A')} | **Features attive:** {len(active)}/{total_feat}\n\n*Solo le features usate nel training sono visualizzate.*")
 
-        with col1:
-            st.metric("Modello", metadata['best_model_name'])
-        with col2:
-            st.metric("Test Accuracy", f"{metadata['test_accuracy']:.4f}")
-        with col3:
-            st.metric("F1 Macro", f"{metadata['test_f1_macro']:.4f}")
-        with col4:
-            st.metric("Features", len(metadata['feature_names']))
+        cats = organize_by_category(active)
+        with st.expander("📋 Features utilizzate", expanded=False):
+            for cat, feats in cats.items():
+                st.markdown(f"**{CATEGORY_ICONS.get(cat, '📌')} {cat}** ({len(feats)})")
+                st.write(", ".join([f['cfg'].get('display', f['col']) for f in feats]))
 
         st.markdown("---")
+        with st.form("pred"):
+            st.subheader("📝 Dati Studente")
+            inputs = {}
+            cols = st.columns(3)
+            for i, (cat, feats) in enumerate(cats.items()):
+                with cols[i % 3]:
+                    st.markdown(f"**{CATEGORY_ICONS.get(cat, '📌')} {cat}**")
+                    for f in feats:
+                        col, val = render_input(f, "p")
+                        inputs[col] = val
+                    st.markdown("---")
+            submit = st.form_submit_button("🔮 Predici", type="primary", use_container_width=True)
 
-        # Model comparison
-        if 'comparison_results' in metadata:
-            st.subheader("Confronto con Altri Modelli")
+        if submit:
+            try:
+                feat = create_features(inputs, st.session_state.preprocessor_data)
+                pred = st.session_state.model.predict(feat)
+                probs = st.session_state.model.predict_proba(feat)
+                cls = CLASS_NAMES_LIST[pred[0]]
+                st.markdown("---")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("🎯 Risultato", cls)
+                c2.metric("📈 Confidenza", f"{max(probs[0])*100:.1f}%")
+                risk = "Alto 🔴" if cls == "Dropout" else ("Medio 🟡" if cls == "Enrolled" else "Basso 🟢")
+                c3.metric("⚠️ Rischio", risk)
+                st.markdown("---"); st.pyplot(plot_probs(probs[0], CLASS_NAMES_LIST)); plt.close()
+                with st.expander("📋 Dati inseriti"):
+                    input_data = []
+                    for k, v in inputs.items():
+                        readable_value = get_readable_value(k, v)
+                        input_data.append({
+                            'Feature': get_feature_config(k).get('display', k),
+                            'Valore': readable_value,
+                            'Descrizione': get_feature_description(k)
+                        })
 
-            metric_choice = st.selectbox(
-                "Seleziona metrica:",
-                ["F1 (Macro)", "Accuracy", "F1 (Weighted)"]
-            )
-
-            fig = plot_model_comparison(metadata['comparison_results'], metric_choice)
-            st.pyplot(fig)
-            plt.close()
-
-            st.markdown("---")
-
-            st.subheader("Tabella Risultati Completi")
-            comparison_df = pd.DataFrame(metadata['comparison_results'])
-            st.dataframe(comparison_df, use_container_width=True)
-
-    # TAB 2: Prediction Simulator
-    with tab2:
-        st.header("🔮 Simulatore di Predizioni")
-
-        st.info(f"Usando il modello **{metadata['best_model_name']}** per le predizioni")
-
-        st.subheader("Inserisci Dati Studente")
-
-        # Create input form with common features
-        with st.form("prediction_form"):
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                st.markdown("**Dati Anagrafici**")
-                age = st.number_input("Età all'Iscrizione", min_value=17, max_value=70, value=20)
-
-                marital_status = st.selectbox(
-                    "Stato Civile",
-                    [1, 2, 3, 4, 5, 6],
-                    format_func=lambda x: {
-                        1: "Single",
-                        2: "Sposato",
-                        3: "Vedovo",
-                        4: "Divorziato",
-                        5: "Unione di fatto",
-                        6: "Separato legalmente"
-                    }[x]
-                )
-
-                gender = st.selectbox("Genere", [0, 1], format_func=lambda x: "Femmina" if x == 0 else "Maschio")
-
-            with col2:
-                st.markdown("**Dati Accademici**")
-                admission_grade = st.slider("Voto Ammissione", 0.0, 200.0, 120.0)
-                prev_qualification_grade = st.slider("Voto Qualifica Precedente", 0.0, 200.0, 120.0)
-
-                scholarship = st.selectbox(
-                    "Borsa di Studio",
-                    [0, 1],
-                    format_func=lambda x: "Sì" if x == 1 else "No"
-                )
-
-            with col3:
-                st.markdown("**Dati Finanziari**")
-                debtor = st.selectbox(
-                    "Debitore",
-                    [0, 1],
-                    format_func=lambda x: "Sì" if x == 1 else "No"
-                )
-
-                tuition_up_to_date = st.selectbox(
-                    "Tasse Pagate",
-                    [0, 1],
-                    format_func=lambda x: "Sì" if x == 1 else "No"
-                )
-
-                units_1st_sem = st.number_input("Unità 1° Sem Approvate", min_value=0, max_value=30, value=5)
-                units_2nd_sem = st.number_input("Unità 2° Sem Approvate", min_value=0, max_value=30, value=5)
-
-            submitted = st.form_submit_button("🔮 Predici Risultato", type="primary")
-
-        if submitted:
-            st.markdown("---")
-
-            # Collect user inputs
-            user_inputs = {
-                'age': age,
-                'marital_status': marital_status,
-                'gender': gender,
-                'admission_grade': admission_grade,
-                'prev_qualification_grade': prev_qualification_grade,
-                'scholarship': scholarship,
-                'debtor': debtor,
-                'tuition_up_to_date': tuition_up_to_date,
-                'units_1st_sem': units_1st_sem,
-                'units_2nd_sem': units_2nd_sem
-            }
-
-            # Make prediction
-            with st.spinner("Esecuzione predizione..."):
-                try:
-                    # Create feature vector from user inputs
-                    sample_features = create_feature_vector_from_input(
-                        user_inputs,
-                        metadata['feature_names'],
-                        st.session_state.preprocessor_data
-                    )
-
-                    prediction = st.session_state.model.predict(sample_features)
-                    probabilities = st.session_state.model.predict_proba(sample_features)
-
-                    predicted_class = CLASS_NAMES_LIST[prediction[0]]
-
-                    st.subheader("Risultato Predizione")
-
-                    # Show input summary
-                    with st.expander("📋 Riepilogo Input"):
-                        input_df = pd.DataFrame([{
-                            'Parametro': k.replace('_', ' ').title(),
-                            'Valore': v
-                        } for k, v in user_inputs.items()])
-                        st.dataframe(input_df, use_container_width=True)
-
-                    col1, col2, col3 = st.columns(3)
-
-                    with col1:
-                        st.metric("Risultato Predetto", predicted_class)
-
-                    with col2:
-                        max_prob = max(probabilities[0]) * 100
-                        st.metric("Confidenza", f"{max_prob:.1f}%")
-
-                    with col3:
-                        risk_level = "Alto" if predicted_class == "Dropout" else ("Medio" if predicted_class == "Enrolled" else "Basso")
-                        risk_color = "🔴" if predicted_class == "Dropout" else ("🟡" if predicted_class == "Enrolled" else "🟢")
-                        st.metric("Livello di Rischio", f"{risk_color} {risk_level}")
-
-                    # Probability distribution
-                    st.subheader("Distribuzione Probabilità")
-
-                    prob_df = pd.DataFrame({
-                        'Classe': CLASS_NAMES_LIST,
-                        'Probabilità': probabilities[0]
-                    })
-
-                    fig, ax = plt.subplots(figsize=(10, 5))
-                    colors = ['#ff6b6b', '#feca57', '#48dbfb']
-                    bars = ax.bar(prob_df['Classe'], prob_df['Probabilità'], color=colors, edgecolor='black')
-
-                    for bar, prob in zip(bars, prob_df['Probabilità']):
-                        ax.text(
-                            bar.get_x() + bar.get_width() / 2,
-                            bar.get_height() + 0.01,
-                            f'{prob*100:.1f}%',
-                            ha='center', va='bottom', fontsize=11, fontweight='bold'
-                        )
-
-                    ax.set_ylabel('Probabilità', fontsize=12)
-                    ax.set_title('Probabilità di Predizione per Classe', fontsize=14, fontweight='bold')
-                    ax.set_ylim(0, 1.1)
-                    ax.grid(axis='y', alpha=0.3)
-
-                    st.pyplot(fig)
-                    plt.close()
-
-                    # Show probability table
                     st.dataframe(
-                        prob_df.style.format({'Probabilità': '{:.2%}'})
-                        .background_gradient(cmap='RdYlGn', subset=['Probabilità']),
+                        pd.DataFrame(input_data),
                         use_container_width=True
                     )
+                st.markdown("---")
+                if cls == "Dropout": st.error("⚠️ **Alto Rischio** - Tutoring urgente, supporto finanziario, mentoring")
+                elif cls == "Enrolled": st.warning("⚡ **Rischio Moderato** - Check-in regolari, gruppi studio")
+                else: st.success("✅ **Basso Rischio** - Buone prospettive")
+            except Exception as e: st.error(f"Errore: {e}")
 
-                    # Recommendations
-                    st.subheader("Raccomandazioni")
-
-                    if predicted_class == "Dropout":
-                        st.error("""
-                        ⚠️ **Alto Rischio di Abbandono**
-                        
-                        Interventi raccomandati:
-                        - Fissare incontro urgente con tutor accademico
-                        - Valutare opzioni di aiuto finanziario
-                        - Fornire supporto di tutoraggio
-                        - Monitorare attentamente la frequenza
-                        - Considerare programma di mentoring
-                        """)
-                    elif predicted_class == "Enrolled":
-                        st.warning("""
-                        ⚡ **Rischio Moderato - Ancora Iscritto**
-                        
-                        Interventi raccomandati:
-                        - Check-in regolari con lo studente
-                        - Incoraggiare partecipazione a gruppi studio
-                        - Monitorare i progressi accademici
-                        - Offrire sessioni di orientamento
-                        """)
-                    else:
-                        st.success("""
-                        ✅ **Basso Rischio - Probabile Laurea**
-                        
-                        Lo studente mostra indicatori positivi per il completamento con successo.
-                        Continuare a fornire supporto accademico standard e incoraggiamento.
-                        """)
-
-                except Exception as e:
-                    st.error(f"Errore durante la predizione: {str(e)}")
-
-                    # Debug information
-                    with st.expander("🔍 Informazioni di Debug"):
-                        st.write("**Errore completo:**")
-                        st.code(str(e))
-                        st.write("**Features disponibili:**")
-                        st.write(metadata.get('feature_names', [])[:10])
-                        st.write("**Shape atteso:**", len(metadata.get('feature_names', [])))
-
-                    st.info("""
-                    **Suggerimento**: Assicurati che i nomi delle features nel CSV di training
-                    corrispondano a quelli utilizzati nel simulatore.
-                    """)
-
-    # TAB 3: Model Info
     with tab3:
-        st.header("📋 Informazioni sul Modello")
+        st.header("📋 Dettagli")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("⚙️ Config"); st.json(meta.get('training_config', {}))
+        with c2:
+            st.subheader("🎯 Classi")
+            for i, n in enumerate(CLASS_NAMES_LIST): st.markdown(f"<span style='color:{CLASS_COLORS[i]}'>●</span> **{i}**: {n}", unsafe_allow_html=True)
+        st.markdown("---"); st.subheader("📋 Features")
+        for cat, feats in organize_by_category(get_active_features(meta, st.session_state.preprocessor_data)).items():
+            with st.expander(f"{CATEGORY_ICONS.get(cat, '📌')} {cat} ({len(feats)})"):
+                for f in feats: st.write(f"• **{f['cfg'].get('display', f['col'])}** (`{f['col']}`)")
 
-        metadata = st.session_state.metadata
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.subheader("Configurazione Training")
-
-            if 'training_config' in metadata:
-                config = metadata['training_config']
-                st.json(config)
-            else:
-                st.info("Configurazione non disponibile")
-
-        with col2:
-            st.subheader("Classi Target")
-
-            class_names_dict = metadata.get('class_names', {})
-            for idx, name in class_names_dict.items():
-                st.write(f"**{idx}**: {name}")
-
-        st.markdown("---")
-
-        st.subheader("Features Utilizzate")
-
-        features = metadata.get('feature_names', [])
-
-        # Display in columns
-        n_cols = 3
-        cols = st.columns(n_cols)
-
-        for idx, feature in enumerate(features):
-            col_idx = idx % n_cols
-            with cols[col_idx]:
-                st.write(f"- {feature}")
-
-        st.markdown("---")
-
-        st.subheader("Dettagli Esperimento")
-
-        exp_details = {
-            'Nome Esperimento': metadata.get('experiment_name', 'N/A'),
-            'Timestamp': metadata.get('timestamp', 'N/A'),
-            'Modello Migliore': metadata.get('best_model_name', 'N/A'),
-            'Numero Features': len(metadata.get('feature_names', [])),
-            'Numero Classi': len(metadata.get('class_names', {}))
-        }
-
-        st.json(exp_details)
-
+    with tab4:
+        st.header("🎨 Dashboard"); st.pyplot(plot_dashboard(meta)); plt.close()
 
 if __name__ == "__main__":
     main()
