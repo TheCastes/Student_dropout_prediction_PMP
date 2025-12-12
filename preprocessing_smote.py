@@ -35,6 +35,15 @@ from sklearn.preprocessing import LabelEncoder
 from collections import Counter
 import joblib
 import os
+import sys
+
+# ============================================================================
+# CONFIGURAZIONE MODALITÀ
+# ============================================================================
+
+# Rileva modalità da argomenti linea di comando
+PREADMISSION_MODE = '--preadmission' in sys.argv
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -61,11 +70,30 @@ plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
 
 print("\n" + "=" * 80)
-print("PREPROCESSING CON SMOTE - Random Forest & XGBoost")
-print("=" * 80)
+if PREADMISSION_MODE:
+    print("PREPROCESSING PRE-IMMATRICOLAZIONE - Con SMOTE")
+    print("=" * 80)
+    print("\n⚠️  MODALITÀ PRE-IMMATRICOLAZIONE ATTIVA")
+    print("   - Input: 24 features (solo dati pre-universitari)")
+    print("   - SMOTE applicato su dati disponibili prima dell'iscrizione")
+else:
+    print("PREPROCESSING CON SMOTE - Random Forest & XGBoost")
+    print("=" * 80)
 
-output_dir = os.getcwd()
-print(f"\n📁 Directory: {output_dir}\n")
+base_dir = os.getcwd()
+if PREADMISSION_MODE:
+    input_dir = os.path.join(base_dir, '01_analysis_preadmission')
+    output_dir = os.path.join(base_dir, '02_preprocessing_preadmission')
+else:
+    input_dir = os.path.join(base_dir, '01_analysis')
+    output_dir = os.path.join(base_dir, '02_preprocessing')
+
+# Crea la cartella di output se non esiste
+os.makedirs(output_dir, exist_ok=True)
+
+print(f"\n📁 Directory base: {base_dir}")
+print(f"📂 Input da: {input_dir}")
+print(f"📂 Output salvati in: {output_dir}\n")
 
 # ============================================================================
 # 1. CARICAMENTO DATASET
@@ -75,7 +103,18 @@ print("=" * 80)
 print("1. CARICAMENTO DATASET")
 print("=" * 80)
 
-csv_files = ['student_data_original.csv', 'data.csv']
+# Cerca il file nella cartella di analysis (diverso per modalità)
+if PREADMISSION_MODE:
+    csv_files = [
+        os.path.join(input_dir, 'student_data_preadmission.csv'),
+        'student_data_preadmission.csv',
+    ]
+else:
+    csv_files = [
+        os.path.join(input_dir, 'student_data_original.csv'),
+        'student_data_original.csv',
+        'data.csv'
+    ]
 csv_path = None
 
 for file in csv_files:
@@ -85,12 +124,19 @@ for file in csv_files:
 
 if csv_path is None:
     print(f"\n✗ Errore: File non trovato!")
-    print(f"   Cercati: {csv_files}")
+    if PREADMISSION_MODE:
+        print(f"   Assicurati di aver eseguito prima: python student_analysis.py --preadmission")
+        print(f"   Il file dovrebbe essere in: {os.path.join(input_dir, 'student_data_preadmission.csv')}")
+    else:
+        print(f"   Assicurati di aver eseguito prima: python student_analysis.py")
+        print(f"   Il file dovrebbe essere in: {os.path.join(input_dir, 'student_data_original.csv')}")
     exit(1)
 
 print(f"\n📂 Caricamento: {csv_path}")
 
-if 'original' in csv_path:
+# I file student_data_original.csv e student_data_preadmission.csv usano ','
+# Il file data.csv usa ';'
+if 'original' in csv_path or 'preadmission' in csv_path:
     df = pd.read_csv(csv_path)
 else:
     df = pd.read_csv(csv_path, sep=';', encoding='utf-8-sig')
@@ -316,19 +362,28 @@ y_train_decoded = le_target.inverse_transform(y_train)
 y_train_smote_decoded = le_target.inverse_transform(y_train_smote)
 y_test_decoded = le_target.inverse_transform(y_test)
 
+# Nomi file diversi per modalità
+if PREADMISSION_MODE:
+    suffix = '_preadmission'
+else:
+    suffix = ''
+
 # 1. Training originale (per confronto)
 train_original = X_train.copy()
 train_original[target_col] = y_train_decoded
-train_original_path = os.path.join(output_dir, 'train_original.csv')
+train_original_path = os.path.join(output_dir, f'train_original{suffix}.csv')
 train_original.to_csv(train_original_path, index=False)
 print(f"\n✓ Training ORIGINALE: {train_original_path}")
 print(f"   {len(train_original)} righe × {len(train_original.columns)} colonne")
-print(f"   (Sbilanciato - per confronto)")
+if PREADMISSION_MODE:
+    print(f"   (24 features pre-immatricolazione - Sbilanciato)")
+else:
+    print(f"   (Sbilanciato - per confronto)")
 
 # 2. Training con SMOTE (da usare!)
 train_smote = X_train_smote.copy()
 train_smote[target_col] = y_train_smote_decoded
-train_smote_path = os.path.join(output_dir, 'train_smote.csv')
+train_smote_path = os.path.join(output_dir, f'train_smote{suffix}.csv')
 train_smote.to_csv(train_smote_path, index=False)
 print(f"\n✓ Training con SMOTE: {train_smote_path}")
 print(f"   {len(train_smote)} righe × {len(train_smote.columns)} colonne")
@@ -337,7 +392,7 @@ print(f"   ⭐ USA QUESTO per training del modello!")
 # 3. Test set (MAI toccato!)
 test_set = X_test.copy()
 test_set[target_col] = y_test_decoded
-test_set_path = os.path.join(output_dir, 'test_set.csv')
+test_set_path = os.path.join(output_dir, f'test_set{suffix}.csv')
 test_set.to_csv(test_set_path, index=False)
 print(f"\n✓ Test set: {test_set_path}")
 print(f"   {len(test_set)} righe × {len(test_set.columns)} colonne")
@@ -351,14 +406,15 @@ smote_info = {
     'original_counts': dict(train_counts),
     'smote_counts': dict(smote_counts),
     'synthetic_samples': synthetic_samples,
-    'target_mapping': target_mapping
+    'target_mapping': target_mapping,
+    'preadmission_mode': PREADMISSION_MODE
 }
-smote_info_path = os.path.join(output_dir, 'smote_info.pkl')
+smote_info_path = os.path.join(output_dir, f'smote_info{suffix}.pkl')
 joblib.dump(smote_info, smote_info_path)
 print(f"\n✓ Info SMOTE: {smote_info_path}")
 
 # 5. Target encoder
-target_encoder_path = os.path.join(output_dir, 'target_encoder.pkl')
+target_encoder_path = os.path.join(output_dir, f'target_encoder{suffix}.pkl')
 joblib.dump(le_target, target_encoder_path)
 print(f"✓ Target encoder: {target_encoder_path}")
 
@@ -438,7 +494,10 @@ for i, bar in enumerate(bars4):
             ha='center', va='bottom', fontweight='bold', fontsize=10)
 
 plt.tight_layout()
-viz_path = os.path.join(output_dir, 'class_distribution.png')
+if PREADMISSION_MODE:
+    viz_path = os.path.join(output_dir, 'class_distribution_preadmission.png')
+else:
+    viz_path = os.path.join(output_dir, 'class_distribution.png')
 plt.savefig(viz_path, dpi=300, bbox_inches='tight')
 print(f"\n✓ Visualizzazione: {viz_path}")
 
@@ -450,12 +509,25 @@ print("\n" + "=" * 80)
 print("9. REPORT DETTAGLIATO")
 print("=" * 80)
 
-report_path = os.path.join(output_dir, 'preprocessing_report.txt')
+if PREADMISSION_MODE:
+    report_path = os.path.join(output_dir, 'preprocessing_report_preadmission.txt')
+else:
+    report_path = os.path.join(output_dir, 'preprocessing_report.txt')
 with open(report_path, 'w', encoding='utf-8') as f:
     f.write("=" * 80 + "\n")
-    f.write("PREPROCESSING CON SMOTE - Random Forest & XGBoost\n")
+    if PREADMISSION_MODE:
+        f.write("PREPROCESSING PRE-IMMATRICOLAZIONE - Con SMOTE\n")
+    else:
+        f.write("PREPROCESSING CON SMOTE - Random Forest & XGBoost\n")
     f.write("=" * 80 + "\n\n")
 
+    if PREADMISSION_MODE:
+        f.write("MODALITÀ: PRE-IMMATRICOLAZIONE\n")
+        f.write("FEATURES: 24 (solo dati disponibili prima dell'iscrizione)\n")
+    else:
+        f.write("MODALITÀ: COMPLETA\n")
+        f.write("FEATURES: 36 (include performance universitaria)\n")
+    f.write("\n")
     f.write("METODO: SMOTE (Synthetic Minority Over-sampling Technique)\n")
     f.write("SPLIT: 80% Training / 20% Test (stratificato)\n")
     f.write("OTTIMIZZAZIONI: No standardizzazione per alberi\n\n")
@@ -533,23 +605,64 @@ print(f"✓ Report: {report_path}")
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("✅ PREPROCESSING CON SMOTE COMPLETATO!")
+if PREADMISSION_MODE:
+    print("✅ PREPROCESSING PRE-IMMATRICOLAZIONE COMPLETATO!")
+else:
+    print("✅ PREPROCESSING CON SMOTE COMPLETATO!")
 print("=" * 80)
 
 print(f"\n📁 Directory: {output_dir}\n")
 print("📦 File generati:")
-print(f"  1. train_original.csv     - Training originale (sbilanciato)")
-print(f"  2. train_smote.csv        - Training con SMOTE ⭐ USA QUESTO!")
-print(f"  3. test_set.csv           - Test set (mai modificato)")
-print(f"  4. smote_info.pkl         - Informazioni SMOTE")
-print(f"  5. target_encoder.pkl     - Encoder del target")
-print(f"  6. class_distribution.png - Visualizzazione")
-print(f"  7. preprocessing_report.txt - Report completo")
+
+if PREADMISSION_MODE:
+    print(f"  1. train_original_preadmission.csv     - Training originale (24 features)")
+    print(f"  2. train_smote_preadmission.csv        - Training con SMOTE ⭐ USA QUESTO!")
+    print(f"  3. test_set_preadmission.csv           - Test set (mai modificato)")
+    print(f"  4. smote_info_preadmission.pkl         - Informazioni SMOTE")
+    print(f"  5. target_encoder_preadmission.pkl     - Encoder del target")
+    print(f"  6. class_distribution_preadmission.png - Visualizzazione")
+    print(f"  7. preprocessing_report_preadmission.txt - Report completo")
+else:
+    print(f"  1. train_original.csv     - Training originale (sbilanciato)")
+    print(f"  2. train_smote.csv        - Training con SMOTE ⭐ USA QUESTO!")
+    print(f"  3. test_set.csv           - Test set (mai modificato)")
+    print(f"  4. smote_info.pkl         - Informazioni SMOTE")
+    print(f"  5. target_encoder.pkl     - Encoder del target")
+    print(f"  6. class_distribution.png - Visualizzazione")
+    print(f"  7. preprocessing_report.txt - Report completo")
 
 print("\n" + "=" * 80)
 print("🚀 QUICK START - RANDOM FOREST")
 print("=" * 80)
-print("""
+
+if PREADMISSION_MODE:
+    print("""
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, balanced_accuracy_score
+import pandas as pd
+
+# Carica training con SMOTE (PRE-IMMATRICOLAZIONE - 24 features)
+train = pd.read_csv('train_smote_preadmission.csv')
+X_train = train.drop('Target', axis=1)
+y_train = train['Target']
+
+# Carica test
+test = pd.read_csv('test_set_preadmission.csv')
+X_test = test.drop('Target', axis=1)
+y_test = test['Target']
+
+# Training
+model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+model.fit(X_train, y_train)
+
+# Valutazione
+y_pred = model.predict(X_test)
+print(classification_report(y_test, y_pred))
+print(f"Balanced Accuracy: {balanced_accuracy_score(y_test, y_pred):.3f}")
+# Accuracy attesa: ~58-60% (normale per predizione precoce)
+""")
+else:
+    print("""
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, balanced_accuracy_score
 import pandas as pd
