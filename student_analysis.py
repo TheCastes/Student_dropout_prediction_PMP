@@ -9,13 +9,12 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# Importa configurazione colori centralizzata
 from color_config import (
-    CLASS_COLORS, CLASS_COLORS_LIST, HEATMAP_CMAPS,
-    CATEGORICAL_PALETTE, setup_plot_style, get_class_color,
+    CLASS_COLORS_LIST,
+    HEATMAP_CMAPS,
+    setup_plot_style,
     map_colors_to_labels
 )
-
 # ============================================================================
 # CONFIGURAZIONE MODALITÀ
 # ============================================================================
@@ -35,14 +34,11 @@ EXCLUDE_FEATURES_PREADMISSION = [
     'Curricular units 2nd sem (without evaluations)'
 ]
 
-# Setup stile grafico coerente
 setup_plot_style()
 sns.set_palette(CLASS_COLORS_LIST)
 
 print("=" * 80)
 if PREADMISSION_MODE:
-    print("ANALISI PRE-IMMATRICOLAZIONE: Predict Students' Dropout")
-    print("=" * 80)
     print("\nMODALITÀ PRE-IMMATRICOLAZIONE ATTIVA")
     print("CARICAMENTO DATASET: Predict Students' Dropout and Academic Success")
 else:
@@ -58,18 +54,16 @@ print(f"Directory di lavoro: {base_dir}")
 print(f"Output salvati in: {output_dir}\n")
 
 possible_paths = [
-    'data.csv',  # Directory corrente
-    os.path.join(os.path.dirname(__file__), 'data.csv'),  # Stessa dir dello script
-    os.path.join(os.getcwd(), 'data.csv'),  # Working directory
+    'data.csv',
+    os.path.join(os.path.dirname(__file__), 'data.csv'),
+    os.path.join(os.getcwd(), 'data.csv'),
     'data/data.csv',
 ]
-
 csv_path = None
 for path in possible_paths:
     if os.path.exists(path):
         csv_path = path
         break
-
 if csv_path is None:
     print(f"\nErrore: file 'data.csv' non trovato!")
     print("\nIl programma ha cercato in:")
@@ -97,7 +91,6 @@ if PREADMISSION_MODE:
         if feature in df.columns:
             print(f"   {i:2d}. {feature}")
     df = df.drop(columns=EXCLUDE_FEATURES_PREADMISSION, errors='ignore')
-
     print(f"\nDataset filtrato:")
     print(f"  - Variabili rimosse: {len(EXCLUDE_FEATURES_PREADMISSION)}")
     print(f"  - Variabili rimanenti: {len(df.columns)}")
@@ -110,6 +103,7 @@ for i, col in enumerate(df.columns, 1):
     print(f"  {i:2d}. {col}")
 target_col = 'Target'
 print(f"\nVariabile target: {target_col}")
+
 print("\n" + "=" * 80)
 print("MAPPATURA DELLE VARIABILI CATEGORICHE")
 print("=" * 80)
@@ -230,7 +224,7 @@ mappings = {
     }
 }
 # ============================================================================
-# SALVA MAPPINGS PER L'APP STREAMLIT
+# SALVA MAPPINGS
 # ============================================================================
 print("\nSalvataggio mappings")
 mappings_json_path = os.path.join(output_dir, 'feature_mappings.json')
@@ -289,375 +283,173 @@ for status, count in target_counts.items():
     bar = '█' * int(pct / 2)
     print(f"  {status:15s}: {count:5d} ({pct:5.2f}%) {bar}")
 print("\n" + "=" * 80)
-print("CREAZIONE VISUALIZZAZIONI SEPARATE")
+print("CREAZIONE VISUALIZZAZIONI")
 print("=" * 80)
 
-# Crea sottocartella per visualizzazioni
 viz_dir = os.path.join(output_dir, 'visualizations')
 os.makedirs(viz_dir, exist_ok=True)
 print(f"Directory visualizzazioni: {viz_dir}\n")
-
 n_viz = 0
 
 if PREADMISSION_MODE:
-    # ========================================================================
-    # VISUALIZZAZIONI PRE-IMMATRICOLAZIONE - FILE SEPARATI
-    # ========================================================================
-    # Mappa i colori alle label effettive (NON usa lista fissa)
-    colors = map_colors_to_labels(target_counts.index)
-
-    # 1. Distribuzione Target
-    fig, ax = plt.subplots(figsize=(10, 6))
-    target_counts.plot(kind='bar', ax=ax, color=colors, edgecolor='black', linewidth=1.5)
-    ax.set_title('Distribuzione Status Studenti\n(Pre-Immatricolazione)', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Status', fontsize=14)
-    ax.set_ylabel('Numero Studenti', fontsize=14)
-    ax.tick_params(axis='x', rotation=45)
-    ax.grid(axis='y', alpha=0.3)
-    for i, v in enumerate(target_counts.values):
-        pct = target_pct.values[i]
-        ax.text(i, v + 50, f'{v}\n({pct:.1f}%)', ha='center', va='bottom', fontweight='bold')
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '01_target_distribution.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 01_target_distribution.png")
-
-    # 2. Età all'iscrizione
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for status in df[target_col].unique():
-        data = df[df[target_col] == status]['Age at enrollment']
-        ax.hist(data, alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Distribuzione Età all\'Iscrizione', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Età', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '02_age_distribution.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 02_age_distribution.png")
-
-    # 3. Voto Qualificazione Precedente
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for status in df[target_col].unique():
-        data = df[df[target_col] == status]['Previous qualification (grade)']
-        ax.hist(data, alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Voto Qualificazione Precedente', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Voto (0-200)', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '03_previous_qualification_grade.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 03_previous_qualification_grade.png")
-
-    # 4. Voto Ammissione
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for status in df[target_col].unique():
-        data = df[df[target_col] == status]['Admission grade']
-        ax.hist(data, alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Voto di Ammissione', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Voto (0-200)', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '04_admission_grade.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 04_admission_grade.png")
-
-    # 5. Status per Genere
-    fig, ax = plt.subplots(figsize=(10, 6))
+    # 01. Status per Genere
+    fig, ax = plt.subplots(figsize=(12, 7))
     gender_target = pd.crosstab(df['Gender'], df[target_col], normalize='index') * 100
     gender_colors_pre = map_colors_to_labels(gender_target.columns)
-    gender_target.plot(kind='bar', ax=ax, color=gender_colors_pre, edgecolor='black', linewidth=1.5)
-    ax.set_title('Status per Genere (%)', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Genere (1=Male, 0=Female)', fontsize=14)
-    ax.set_ylabel('Percentuale', fontsize=14)
-    ax.legend(title='Status', fontsize=11)
-    ax.tick_params(axis='x', rotation=0)
-    ax.grid(axis='y', alpha=0.3)
+    x = np.arange(len(gender_target.index))
+    width = 0.25
+    for i, col in enumerate(gender_target.columns):
+        offset = (i - len(gender_target.columns) / 2 + 0.5) * width
+        bars = ax.bar(x + offset, gender_target[col], width,
+                      label=col, color=gender_colors_pre[i],
+                      edgecolor='black', linewidth=1.5, alpha=0.85)
+        for j, (bar, val) in enumerate(zip(bars, gender_target[col])):
+            if val > 3:  # Mostra solo se > 3%
+                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                        f'{val:.1f}%',
+                        ha='center', va='bottom', fontweight='bold', fontsize=10)
+    ax.set_title('Status per Genere\n(percentuale all\'interno di ogni gruppo)',
+                 fontsize=16, fontweight='bold', pad=20)
+    ax.set_xlabel('Genere', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Percentuale', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(['Femmine (0)', 'Maschi (1)'], fontsize=12)
+    ax.legend(title='Status', fontsize=11, title_fontsize=12, framealpha=0.95)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.set_ylim(0, max(gender_target.max()) * 1.15)
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '05_gender_status.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(viz_dir, '01_gender_status.png'), dpi=300, bbox_inches='tight')
     plt.close()
     n_viz += 1
-    print(f"  {n_viz}. 05_gender_status.png")
-
-    # 6. Borse di Studio
-    fig, ax = plt.subplots(figsize=(10, 6))
+    print(f"  {n_viz}. 01_gender_status.png")
+    # 02. Borse di Studio
+    fig, ax = plt.subplots(figsize=(12, 7))
     schol_target = pd.crosstab(df['Scholarship holder'], df[target_col],
                                normalize='index') * 100
     schol_colors_pre = map_colors_to_labels(schol_target.columns)
-    schol_target.plot(kind='bar', ax=ax, color=schol_colors_pre, edgecolor='black', linewidth=1.5)
-    ax.set_title('Status per Borsa Studio', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Borsa (1=Sì, 0=No)', fontsize=14)
-    ax.set_ylabel('Percentuale', fontsize=14)
-    ax.legend(title='Status', fontsize=11)
-    ax.tick_params(axis='x', rotation=0)
-    ax.grid(axis='y', alpha=0.3)
+    x = np.arange(len(schol_target.index))
+    width = 0.25
+    for i, col in enumerate(schol_target.columns):
+        offset = (i - len(schol_target.columns) / 2 + 0.5) * width
+        bars = ax.bar(x + offset, schol_target[col], width,
+                      label=col, color=schol_colors_pre[i],
+                      edgecolor='black', linewidth=1.5, alpha=0.85)
+        for j, (bar, val) in enumerate(zip(bars, schol_target[col])):
+            if val > 3:
+                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                        f'{val:.1f}%',
+                        ha='center', va='bottom', fontweight='bold', fontsize=10)
+    ax.set_title('Status per Borsa di Studio\n(percentuale all\'interno di ogni gruppo)',
+                 fontsize=16, fontweight='bold', pad=20)
+    ax.set_xlabel('Borsa di Studio', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Percentuale', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(['Senza Borsa (0)', 'Con Borsa (1)'], fontsize=12)
+    ax.legend(title='Status', fontsize=11, title_fontsize=12, framealpha=0.95)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.set_ylim(0, max(schol_target.max()) * 1.15)
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '06_scholarship_status.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(viz_dir, '02_scholarship_status.png'), dpi=300, bbox_inches='tight')
     plt.close()
     n_viz += 1
-    print(f"  {n_viz}. 06_scholarship_status.png")
+    print(f"  {n_viz}. 02_scholarship_status.png")
 else:
-    # ========================================================================
-    # VISUALIZZAZIONI COMPLETE - FILE SEPARATI
-    # ========================================================================
-    # Mappa i colori alle label effettive
-    colors = map_colors_to_labels(target_counts.index)
-
-    # 1. Distribuzione Target
-    fig, ax = plt.subplots(figsize=(10, 6))
-    target_counts.plot(kind='bar', ax=ax, color=colors, edgecolor='black', linewidth=1.5)
-    ax.set_title('Distribuzione Status Studenti', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Status', fontsize=14)
-    ax.set_ylabel('Numero Studenti', fontsize=14)
-    ax.tick_params(axis='x', rotation=45)
-    ax.grid(axis='y', alpha=0.3)
-    for i, v in enumerate(target_counts.values):
-        pct = target_pct.values[i]
-        ax.text(i, v + 50, f'{v}\n({pct:.1f}%)', ha='center', va='bottom', fontweight='bold')
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '01_target_distribution.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 01_target_distribution.png")
-
-    # 2. Status per Genere
-    fig, ax = plt.subplots(figsize=(10, 6))
+    # 01. Status per Genere
+    fig, ax = plt.subplots(figsize=(12, 7))
     gender_target = pd.crosstab(df['Gender'], df[target_col], normalize='index') * 100
     gender_colors = map_colors_to_labels(gender_target.columns)
-    gender_target.plot(kind='bar', ax=ax, color=gender_colors, edgecolor='black', linewidth=1.5)
-    ax.set_title('Status per Genere (%)', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Genere (1=Male, 0=Female)', fontsize=14)
-    ax.set_ylabel('Percentuale', fontsize=14)
-    ax.legend(title='Status', fontsize=11)
-    ax.tick_params(axis='x', rotation=0)
-    ax.grid(axis='y', alpha=0.3)
+    x = np.arange(len(gender_target.index))
+    width = 0.25
+    for i, col in enumerate(gender_target.columns):
+        offset = (i - len(gender_target.columns) / 2 + 0.5) * width
+        bars = ax.bar(x + offset, gender_target[col], width,
+                      label=col, color=gender_colors[i],
+                      edgecolor='black', linewidth=1.5, alpha=0.85)
+
+        for j, (bar, val) in enumerate(zip(bars, gender_target[col])):
+            if val > 3:
+                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                        f'{val:.1f}%',
+                        ha='center', va='bottom', fontweight='bold', fontsize=10)
+    ax.set_title('Status per Genere\n(percentuale all\'interno di ogni gruppo)',
+                 fontsize=16, fontweight='bold', pad=20)
+    ax.set_xlabel('Genere', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Percentuale', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(['Femmine (0)', 'Maschi (1)'], fontsize=12)
+    ax.legend(title='Status', fontsize=11, title_fontsize=12, framealpha=0.95)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.set_ylim(0, max(gender_target.max()) * 1.15)
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '02_gender_status.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(viz_dir, '01_gender_status.png'), dpi=300, bbox_inches='tight')
     plt.close()
     n_viz += 1
-    print(f"  {n_viz}. 02_gender_status.png")
-
-    # 3. Età all'iscrizione
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for status in df[target_col].unique():
-        data = df[df[target_col] == status]['Age at enrollment']
-        ax.hist(data, alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Distribuzione Età all\'Iscrizione', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Età', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '03_age_distribution.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 03_age_distribution.png")
-
-    # 4. Voti 1° Semestre
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for status in df[target_col].unique():
-        data = df[df[target_col] == status]['Curricular units 1st sem (grade)']
-        ax.hist(data, alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Voti 1° Semestre per Status', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Voto Medio', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '04_grades_1st_semester.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 04_grades_1st_semester.png")
-
-    # 5. Voti 2° Semestre
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for status in df[target_col].unique():
-        data = df[df[target_col] == status]['Curricular units 2nd sem (grade)']
-        ax.hist(data, alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Voti 2° Semestre per Status', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Voto Medio', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '05_grades_2nd_semester.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 05_grades_2nd_semester.png")
-
-    # 6. Crediti Approvati 1° Semestre
-    fig, ax = plt.subplots(figsize=(10, 6))
-    df.boxplot(column='Curricular units 1st sem (approved)', by=target_col, ax=ax)
-    ax.set_title('Crediti Approvati 1° Semestre', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Status', fontsize=14)
-    ax.set_ylabel('Numero Crediti', fontsize=14)
-    plt.suptitle('')
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '06_approved_1st_semester.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 06_approved_1st_semester.png")
-
-    # 7. Tasso di Approvazione
-    fig, ax = plt.subplots(figsize=(10, 6))
-    df_temp = df.copy()
-    df_temp['approval_rate'] = (df_temp['Curricular units 1st sem (approved)'] /
-                                df_temp['Curricular units 1st sem (enrolled)'] * 100)
-    for status in df[target_col].unique():
-        data = df_temp[df_temp[target_col] == status]['approval_rate']
-        ax.hist(data.dropna(), alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Tasso Approvazione 1° Sem', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Tasso (%)', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '07_approval_rate.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 07_approval_rate.png")
-
-    # 8. Stato Civile
-    fig, ax = plt.subplots(figsize=(12, 6))
-    marital_target = pd.crosstab(df_mapped['Marital status'], df_mapped[target_col])
-    marital_colors = map_colors_to_labels(marital_target.columns)
-    marital_target.plot(kind='bar', ax=ax, color=marital_colors, edgecolor='black', linewidth=1.5)
-    ax.set_title('Status per Stato Civile', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Stato Civile', fontsize=14)
-    ax.set_ylabel('Numero Studenti', fontsize=14)
-    ax.legend(title='Status', fontsize=11)
-    ax.tick_params(axis='x', rotation=45)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '08_marital_status.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 08_marital_status.png")
-
-    # 9. Top 10 Corsi
-    fig, ax = plt.subplots(figsize=(10, 8))
-    top_courses = df_mapped['Course'].value_counts().head(10)
-    top_courses.plot(kind='barh', ax=ax, color=CATEGORICAL_PALETTE[0], edgecolor='black', linewidth=1.5)
-    ax.set_title('Top 10 Corsi più Frequentati', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Numero Studenti', fontsize=14)
-    ax.set_ylabel('')
-    ax.grid(axis='x', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '09_top_courses.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 09_top_courses.png")
-
-    # 10. Debiti
-    fig, ax = plt.subplots(figsize=(10, 6))
-    df.boxplot(column='Debtor', by=target_col, ax=ax)
-    ax.set_title('Debitori per Status', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Status', fontsize=14)
-    ax.set_ylabel('Debiti (1=Sì, 0=No)', fontsize=14)
-    plt.suptitle('')
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '10_debtor_status.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 10_debtor_status.png")
-
-    # 11. Qualificazione Precedente
-    fig, ax = plt.subplots(figsize=(12, 6))
-    prev_qual_target = pd.crosstab(df_mapped['Previous qualification'],
-                                   df_mapped[target_col], normalize='index') * 100
-    top_quals = df_mapped['Previous qualification'].value_counts().head(8)
-    prev_qual_colors = map_colors_to_labels(prev_qual_target.columns)
-    prev_qual_target.loc[top_quals.index].plot(kind='bar', ax=ax, color=prev_qual_colors, edgecolor='black',
-                                               linewidth=1.5)
-    ax.set_title('Status per Qualificazione Precedente (Top 8)', fontsize=16, fontweight='bold')
-    ax.set_xlabel('', fontsize=10)
-    ax.set_ylabel('Percentuale', fontsize=14)
-    ax.legend(title='Status', fontsize=11)
-    ax.tick_params(axis='x', rotation=45, labelsize=9)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '11_previous_qualification.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 11_previous_qualification.png")
-
-    # 12. Voto Qualificazione Precedente
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for status in df[target_col].unique():
-        data = df[df[target_col] == status]['Previous qualification (grade)']
-        ax.hist(data, alpha=0.6, label=status, bins=20, color=CLASS_COLORS[status], edgecolor='black')
-    ax.set_title('Voto Qualificazione Precedente', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Voto (0-200)', fontsize=14)
-    ax.set_ylabel('Frequenza', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '12_previous_qualification_grade.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 12_previous_qualification_grade.png")
-
-    # 13. Correlazione Voti
-    fig, ax = plt.subplots(figsize=(10, 8))
-    for status in df[target_col].unique():
-        mask = df[target_col] == status
-        ax.scatter(df.loc[mask, 'Curricular units 1st sem (grade)'],
-                   df.loc[mask, 'Curricular units 2nd sem (grade)'],
-                   alpha=0.5, label=status, color=CLASS_COLORS[status], s=30)
-    ax.plot([0, 20], [0, 20], 'k--', alpha=0.3, linewidth=2, label='y=x')
-    ax.set_title('Correlazione: Voti 1° vs 2° Semestre', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Voto 1° Sem', fontsize=14)
-    ax.set_ylabel('Voto 2° Sem', fontsize=14)
-    ax.legend(fontsize=12)
-    ax.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '13_grades_correlation.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 13_grades_correlation.png")
-
-    # 14. Top Nazionalità
-    fig, ax = plt.subplots(figsize=(10, 8))
-    top_nat = df_mapped['Nacionality'].value_counts().head(10)
-    top_nat.plot(kind='barh', ax=ax, color=CATEGORICAL_PALETTE[0], edgecolor='black', linewidth=1.5)
-    ax.set_title('Top 10 Nazionalità', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Numero Studenti', fontsize=14)
-    ax.set_ylabel('')
-    ax.grid(axis='x', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '14_top_nationalities.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    n_viz += 1
-    print(f"  {n_viz}. 14_top_nationalities.png")
-
-    # 15. Borse di Studio
-    fig, ax = plt.subplots(figsize=(10, 6))
+    print(f"  {n_viz}. 01_gender_status.png")
+    # 02. Borse di Studio
+    fig, ax = plt.subplots(figsize=(12, 7))
     schol_target = pd.crosstab(df['Scholarship holder'], df[target_col], normalize='index') * 100
     schol_colors = map_colors_to_labels(schol_target.columns)
-    schol_target.plot(kind='bar', ax=ax, color=schol_colors, edgecolor='black', linewidth=1.5)
-    ax.set_title('Status per Borsa Studio', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Borsa (1=Sì, 0=No)', fontsize=14)
-    ax.set_ylabel('Percentuale', fontsize=14)
-    ax.legend(title='Status', fontsize=11)
-    ax.tick_params(axis='x', rotation=0)
-    ax.grid(axis='y', alpha=0.3)
+    x = np.arange(len(schol_target.index))
+    width = 0.25
+    for i, col in enumerate(schol_target.columns):
+        offset = (i - len(schol_target.columns) / 2 + 0.5) * width
+        bars = ax.bar(x + offset, schol_target[col], width,
+                      label=col, color=schol_colors[i],
+                      edgecolor='black', linewidth=1.5, alpha=0.85)
+        for j, (bar, val) in enumerate(zip(bars, schol_target[col])):
+            if val > 3:
+                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                        f'{val:.1f}%',
+                        ha='center', va='bottom', fontweight='bold', fontsize=10)
+    ax.set_title('Status per Borsa di Studio\n(percentuale all\'interno di ogni gruppo)',
+                 fontsize=16, fontweight='bold', pad=20)
+    ax.set_xlabel('Borsa di Studio', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Percentuale', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(['Senza Borsa (0)', 'Con Borsa (1)'], fontsize=12)
+    ax.legend(title='Status', fontsize=11, title_fontsize=12, framealpha=0.95)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.set_ylim(0, max(schol_target.max()) * 1.15)
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_dir, '15_scholarship_status.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(viz_dir, '02_scholarship_status.png'), dpi=300, bbox_inches='tight')
     plt.close()
     n_viz += 1
-    print(f"  {n_viz}. 15_scholarship_status.png")
+    print(f"  {n_viz}. 02_scholarship_status.png")
+   # 03. Tuition fees
+    fig, ax = plt.subplots(figsize=(12, 7))
+    tuition_target = pd.crosstab(df['Tuition fees up to date'],
+                                 df[target_col],
+                                 normalize='index') * 100
+    tuition_colors = map_colors_to_labels(tuition_target.columns)
+    x = np.arange(len(tuition_target.index))
+    width = 0.25
+    for i, col in enumerate(tuition_target.columns):
+        offset = (i - len(tuition_target.columns) / 2 + 0.5) * width
+        bars = ax.bar(x + offset, tuition_target[col], width,
+                      label=col, color=tuition_colors[i],
+                      edgecolor='black', linewidth=1.5, alpha=0.85)
+        for j, (bar, val) in enumerate(zip(bars, tuition_target[col])):
+            if val > 2:
+                ax.text(bar.get_x() + bar.get_width() / 2.,
+                        bar.get_height(), f'{val:.1f}%',
+                        ha='center', va='bottom',
+                        fontweight='bold', fontsize=10)
+    ax.set_title('Distribuzione Status per Tasse Universitarie\n(percentuale dei 3 status all\'interno di ogni gruppo)',
+                 fontsize=16, fontweight='bold', pad=20)
+    ax.set_xlabel('Stato Tasse', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Percentuale', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(['Non in Regola (0)', 'In Regola (1)'], fontsize=12)
+    ax.legend(title='Status', fontsize=11, title_fontsize=12, framealpha=0.95)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.set_ylim(0, max(tuition_target.max()) * 1.15)
 
-print(f"\n✅ {n_viz} visualizzazioni generate")
-print(f"📁 Directory: {viz_dir}")
+    plt.tight_layout()
+    plt.savefig(os.path.join(viz_dir, '03_tuition_fees_status.png'),
+                dpi=300, bbox_inches='tight')
+    plt.close()
+    n_viz += 1
+    print(f"  {n_viz}. 03_tuition_fees_status.png")
 
 print("\n" + "=" * 80)
 print("STATISTICHE DESCRITTIVE PER STATUS")
@@ -677,84 +469,8 @@ for status in df[target_col].unique():
     print("-" * 80)
     status_data = df[df[target_col] == status][numeric_cols]
     print(status_data.describe().round(2))
-print("\n" + "=" * 80)
-print("MATRICE DI CORRELAZIONE")
-print("=" * 80)
-all_numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-if target_col in all_numeric_cols:
-    all_numeric_cols.remove(target_col)
-print(f"\nCalcolo correlazioni per {len(all_numeric_cols)} variabili numeriche...")
-fig1, ax1 = plt.subplots(figsize=(20, 18))
-corr_matrix_full = df[all_numeric_cols].corr()
-sns.heatmap(corr_matrix_full, annot=True, fmt='.2f', cmap=HEATMAP_CMAPS['correlation'],
-            center=0, square=True, ax=ax1, cbar_kws={"shrink": 0.8},
-            annot_kws={"size": 7})
-ax1.set_title('Matrice di Correlazione COMPLETA - Tutte le Variabili',
-              fontsize=16, fontweight='bold', pad=20)
-plt.xticks(rotation=45, ha='right', fontsize=8)
-plt.yticks(rotation=0, fontsize=8)
-plt.tight_layout()
-corr_path_full = os.path.join(viz_dir, '16_correlation_matrix_complete.png')
-plt.savefig(corr_path_full, dpi=300, bbox_inches='tight')
-n_viz += 1
-print(f"  {n_viz}. 16_correlation_matrix_complete.png")
-if not PREADMISSION_MODE:
-    correlation_cols_key = [
-        'Age at enrollment',
-        'Previous qualification (grade)',
-        'Admission grade',
-        'Curricular units 1st sem (credited)',
-        'Curricular units 1st sem (enrolled)',
-        'Curricular units 1st sem (evaluations)',
-        'Curricular units 1st sem (approved)',
-        'Curricular units 1st sem (grade)',
-        'Curricular units 2nd sem (credited)',
-        'Curricular units 2nd sem (enrolled)',
-        'Curricular units 2nd sem (evaluations)',
-        'Curricular units 2nd sem (approved)',
-        'Curricular units 2nd sem (grade)',
-        'Unemployment rate',
-        'Inflation rate',
-        'GDP'
-    ]
-    fig2, ax2 = plt.subplots(figsize=(14, 12))
-    corr_matrix_key = df[correlation_cols_key].corr()
-    sns.heatmap(corr_matrix_key, annot=True, fmt='.2f', cmap=HEATMAP_CMAPS['correlation'],
-                center=0, square=True, ax=ax2, cbar_kws={"shrink": 0.8},
-                annot_kws={"size": 9})
-    ax2.set_title('Matrice di Correlazione - Variabili Performance Accademica',
-                  fontsize=16, fontweight='bold', pad=20)
-    plt.xticks(rotation=45, ha='right', fontsize=9)
-    plt.yticks(rotation=0, fontsize=9)
-    plt.tight_layout()
-    corr_path_key = os.path.join(viz_dir, '17_correlation_matrix_academic.png')
-    plt.savefig(corr_path_key, dpi=300, bbox_inches='tight')
-    n_viz += 1
-    print(f"  {n_viz}. 17_correlation_matrix_academic.png")
-print("\n" + "=" * 80)
-print("CORRELAZIONI PIÙ FORTI (|r| > 0.5)")
-print("=" * 80)
-print("\nCoppie di variabili con correlazione forte:")
-print("-" * 80)
-strong_corr = []
-for i in range(len(corr_matrix_full.columns)):
-    for j in range(i + 1, len(corr_matrix_full.columns)):
-        corr_val = corr_matrix_full.iloc[i, j]
-        if abs(corr_val) > 0.5:
-            var1 = corr_matrix_full.columns[i]
-            var2 = corr_matrix_full.columns[j]
-            strong_corr.append((var1, var2, corr_val))
-strong_corr.sort(key=lambda x: abs(x[2]), reverse=True)
 
-for var1, var2, corr_val in strong_corr[:20]:  # Top 20
-    direction = "+" if corr_val > 0 else "-"
-    bar = "█" * int(abs(corr_val) * 20)
-    print(f"  {var1:45s} <-> {var2:45s} : {direction}{abs(corr_val):.3f} {bar}")
-print("\n" + "=" * 80)
-print("CORRELAZIONI CON IL TARGET")
-print("=" * 80)
 from sklearn.preprocessing import LabelEncoder
-
 le = LabelEncoder()
 df_temp = df.copy()
 df_temp['target_encoded'] = le.fit_transform(df_temp[target_col])
@@ -798,16 +514,10 @@ print(f"\nTutti i file sono stati salvati in: {output_dir}\n")
 print("File generati:")
 if PREADMISSION_MODE:
     print(f"  1. {os.path.basename(original_csv)} - Dataset pre-immatricolazione (24 features)")
-    print(f"  2. visualizations/ - Cartella con 6 visualizzazioni separate")
-    print(f"  3. {os.path.basename(corr_path_full)} - Matrice correlazione")
+    print(f"  2. visualizations/ - Cartella con le visualizzazioni")
 else:
-    # Modalità completa
     print(f"  1. {os.path.basename(original_csv)} - Dataset con valori numerici")
-    print(f"  2. {os.path.basename(mapped_csv)} - Dataset con valori leggibili")
-    print(f"  3. visualizations/ - Cartella con 17 visualizzazioni separate")
-    print(f"  4. {os.path.basename(corr_path_full)} - Matrice correlazione COMPLETA")
-    print(f"  5. {os.path.basename(corr_path_key)} - Matrice correlazione ACCADEMICA")
-print(f"\n📁 Visualizzazioni: {viz_dir}")
-print(f"📊 Totale grafici: {n_viz}")
+    print(f"  2. {os.path.basename(mapped_csv)} - Dataset con valori mappati")
+    print(f"  3. visualizations/ - Cartella con le visualizzazioni")
+print(f"\nVisualizzazioni: {viz_dir}")
 print("=" * 80)
-plt.show()

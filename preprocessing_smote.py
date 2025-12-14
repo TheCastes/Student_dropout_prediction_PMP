@@ -5,13 +5,11 @@ pip install scikit-learn==1.5.2
 pip install imbalanced-learn==0.12.4
 """
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from collections import Counter
-import joblib
 import os
 import sys
 # ============================================================================
@@ -21,33 +19,29 @@ PREADMISSION_MODE = '--preadmission' in sys.argv
 import warnings
 warnings.filterwarnings('ignore')
 
-# Importa configurazione colori centralizzata
 from color_config import (
-    CLASS_COLORS_LIST, setup_plot_style, map_colors_to_labels
+    CLASS_COLORS_LIST,
+    setup_plot_style,
+    map_colors_to_labels
 )
-
 try:
     from imblearn.over_sampling import SMOTE
-    SMOTE_AVAILABLE = True
-    print("imbalanced-learn importato correttamente")
 except ImportError as e:
-    SMOTE_AVAILABLE = False
     print(f"\n{'='*80}")
     print("ERRORE: imbalanced-learn non disponibile")
     print("="*80)
     exit(1)
 
-# Setup stile grafico coerente
 setup_plot_style()
 sns.set_palette(CLASS_COLORS_LIST)
 
 print("\n" + "=" * 80)
 if PREADMISSION_MODE:
-    print("PREPROCESSING PRE-IMMATRICOLAZIONE - Con SMOTE")
+    print("PREPROCESSING PRE-IMMATRICOLAZIONE CON SMOTE")
     print("=" * 80)
     print("\nMODALITÀ PRE-IMMATRICOLAZIONE ATTIVA")
 else:
-    print("PREPROCESSING CON SMOTE - Random Forest & XGBoost")
+    print("PREPROCESSING CON SMOTE")
     print("=" * 80)
 
 base_dir = os.getcwd()
@@ -76,7 +70,6 @@ else:
     csv_files = [
         os.path.join(input_dir, 'student_data_original.csv'),
         'student_data_original.csv',
-        'data.csv'
     ]
 csv_path = None
 
@@ -87,118 +80,32 @@ for file in csv_files:
 
 if csv_path is None:
     print(f"\n Errore: File non trovato!")
-    if PREADMISSION_MODE:
-        print(f"   Assicurati di aver eseguito prima: python student_analysis.py --preadmission")
-        print(f"   Il file dovrebbe essere in: {os.path.join(input_dir, 'student_data_preadmission.csv')}")
-    else:
-        print(f"   Assicurati di aver eseguito prima: python student_analysis.py")
-        print(f"   Il file dovrebbe essere in: {os.path.join(input_dir, 'student_data_original.csv')}")
     exit(1)
-
 print(f"\nCaricamento: {csv_path}")
-
-if 'original' in csv_path or 'preadmission' in csv_path:
-    df = pd.read_csv(csv_path)
-else:
-    df = pd.read_csv(csv_path, sep=';', encoding='utf-8-sig')
-    df.columns = df.columns.str.strip().str.replace('"', '').str.replace('\t', '')
-
+df = pd.read_csv(csv_path)
 print(f" Dataset caricato: {len(df)} studenti, {len(df.columns)} variabili")
 
 # ============================================================================
-# 2. ANALISI BILANCIAMENTO
+# 2. SPLIT TRAIN/TEST 80/20 STRATIFICATO
 # ============================================================================
 print("\n" + "=" * 80)
-print("2. ANALISI BILANCIAMENTO CLASSI")
+print("2. SPLIT TRAIN/TEST - 80/20 STRATIFICATO")
 print("=" * 80)
 
 target_col = 'Target'
-if target_col not in df.columns:
-    print(f"\nErrore: Colonna '{target_col}' non trovata!")
-    exit(1)
-
-print(f"\nDistribuzione classi (SBILANCIATA):")
-print("-" * 80)
-target_counts = df[target_col].value_counts().sort_index()
-target_pct = df[target_col].value_counts(normalize=True).sort_index() * 100
-
-for status, count in target_counts.items():
-    pct = target_pct[status]
-    bar = '█' * int(pct / 2)
-    print(f"  {status:15s}: {count:5d} ({pct:5.2f}%) {bar}")
-
-imbalance_ratio = target_counts.max() / target_counts.min()
-print(f"\n Rapporto di sbilanciamento: {imbalance_ratio:.2f}:1")
-
-if imbalance_ratio < 1.5:
-    print("   Sbilanciamento lieve")
-elif imbalance_ratio < 3:
-    print("   Sbilanciamento moderato - SMOTE raccomandato")
-else:
-    print("   Sbilanciamento severo - SMOTE necessario!")
-# ============================================================================
-# 3. PREPARAZIONE FEATURES
-# ============================================================================
-print("\n" + "=" * 80)
-print("3. PREPARAZIONE FEATURES")
-print("=" * 80)
 
 X = df.drop(columns=[target_col])
 y = df[target_col]
-
-print(f"\n Features: {X.shape[1]} variabili")
-print(f" Target: {target_col}")
-
-# Identifica tipi
-numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
-categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
-
-print(f"\nTipi di variabili:")
-print(f"   - Numeriche: {len(numeric_cols)}")
-print(f"   - Categoriche: {len(categorical_cols)}")
-
-# Gestione missing values
-print(f"\nControllo valori mancanti...")
-missing_counts = X.isnull().sum()
-total_missing = missing_counts.sum()
-
-if total_missing > 0:
-    print(f"   ⚠️  Trovati {total_missing} valori mancanti")
-    for col in numeric_cols:
-        if X[col].isnull().sum() > 0:
-            X[col].fillna(X[col].median(), inplace=True)
-    for col in categorical_cols:
-        if X[col].isnull().sum() > 0:
-            X[col].fillna(X[col].mode()[0], inplace=True)
-    print(f"   Imputazione completata")
-else:
-    print(f"   Nessun valore mancante")
-
-# Encoding categoriche
-if len(categorical_cols) > 0:
-    print(f"\n Encoding {len(categorical_cols)} variabili categoriche...")
-    for col in categorical_cols:
-        le = LabelEncoder()
-        X[col] = le.fit_transform(X[col].astype(str))
-    print(f"   Label encoding completato")
 
 # Encoding target
 le_target = LabelEncoder()
 y_encoded = le_target.fit_transform(y)
 target_mapping = {i: label for i, label in enumerate(le_target.classes_)}
 
-print(f"\n Target encoding: {target_mapping}")
-# ============================================================================
-# 4. SPLIT TRAIN/TEST 80/20 STRATIFICATO
-# ============================================================================
-print("\n" + "=" * 80)
-print("4. SPLIT TRAIN/TEST - 80/20 STRATIFICATO")
-print("=" * 80)
-
 test_size = 0.20
 random_state = 42
 
-print(f"\n Split con test_size={test_size} (stratificato)...")
+print(f"\n Split con test_size = {test_size}")
 
 X_train, X_test, y_train, y_test = train_test_split(
     X, y_encoded,
@@ -213,25 +120,11 @@ print(f"   Test:     {len(X_test)} campioni ({test_size*100:.0f}%)")
 train_counts = Counter(y_train)
 test_counts = Counter(y_test)
 
-print(f"\n Distribuzione TRAINING SET:")
-for label_encoded in sorted(train_counts.keys()):
-    label = target_mapping[label_encoded]
-    count = train_counts[label_encoded]
-    pct = count / len(y_train) * 100
-    print(f"   {label:15s}: {count:5d} ({pct:5.2f}%)")
-
-print(f"\n Distribuzione TEST SET:")
-for label_encoded in sorted(test_counts.keys()):
-    label = target_mapping[label_encoded]
-    count = test_counts[label_encoded]
-    pct = count / len(y_test) * 100
-    print(f"   {label:15s}: {count:5d} ({pct:5.2f}%)")
-
 # ============================================================================
-# 5. APPLICAZIONE SMOTE
+# 3. APPLICAZIONE SMOTE
 # ============================================================================
 print("\n" + "=" * 80)
-print("5. APPLICAZIONE SMOTE AL TRAINING SET")
+print("3. APPLICAZIONE SMOTE AL TRAINING SET")
 print("=" * 80)
 print("\n Configurazione SMOTE:")
 print("   Metodo: SMOTE standard (multiclasse)")
@@ -246,22 +139,19 @@ smote = SMOTE(
 )
 
 print(f"\n Applicazione SMOTE...")
-print("   (Generazione campioni sintetici in corso...)")
-
+print("   (Generazione campioni sintetici in corso)")
 try:
     X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
     print("   SMOTE applicato con successo!")
 except Exception as e:
     print(f"   Errore durante SMOTE: {e}")
-    print("\n Possibili soluzioni:")
-    print("   - Verifica che tutte le classi abbiano >= 6 campioni")
-    print("   - Prova k_neighbors=3 se hai poche istanze")
     exit(1)
 
 # Statistiche post-SMOTE
 smote_counts = Counter(y_train_smote)
 
-print(f"\n RISULTATI SMOTE:")
+print("\n" + "=" * 80)
+print("RISULTATI SMOTE:")
 print("=" * 80)
 print(f"Training PRIMA di SMOTE:")
 print(f"  Totale: {len(X_train)} campioni")
@@ -284,11 +174,11 @@ print(f"\n Campioni sintetici creati: {synthetic_samples}")
 print(f"   Incremento: {synthetic_samples/len(X_train)*100:.1f}%")
 
 # ============================================================================
-# 6. SALVATAGGIO DATASET
+# 5. SALVATAGGIO DATASET
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("6. SALVATAGGIO DATASET")
+print("5. SALVATAGGIO DATASET")
 print("=" * 80)
 
 # Decodifica target
@@ -296,7 +186,6 @@ y_train_decoded = le_target.inverse_transform(y_train)
 y_train_smote_decoded = le_target.inverse_transform(y_train_smote)
 y_test_decoded = le_target.inverse_transform(y_test)
 
-# Nomi file diversi per modalità
 if PREADMISSION_MODE:
     suffix = '_preadmission'
 else:
@@ -310,7 +199,7 @@ train_original.to_csv(train_original_path, index=False)
 print(f"\n Training ORIGINALE: {train_original_path}")
 print(f"   {len(train_original)} righe × {len(train_original.columns)} colonne")
 if PREADMISSION_MODE:
-    print(f"   (24 features pre-immatricolazione - Sbilanciato)")
+    print(f"   (features pre-immatricolazione - Sbilanciato)")
 else:
     print(f"   (Sbilanciato - per confronto)")
 
@@ -321,46 +210,25 @@ train_smote_path = os.path.join(output_dir, f'train_smote{suffix}.csv')
 train_smote.to_csv(train_smote_path, index=False)
 print(f"\n Training con SMOTE: {train_smote_path}")
 print(f"   {len(train_smote)} righe × {len(train_smote.columns)} colonne")
-print(f"   ⭐ USA QUESTO per training del modello!")
 
 # 3. Test set
 test_set = X_test.copy()
 test_set[target_col] = y_test_decoded
 test_set_path = os.path.join(output_dir, f'test_set{suffix}.csv')
 test_set.to_csv(test_set_path, index=False)
-print(f"\n✓ Test set: {test_set_path}")
+print(f"\nTest set: {test_set_path}")
 print(f"   {len(test_set)} righe × {len(test_set.columns)} colonne")
-print(f"   (NON modificato - distribuzione reale)")
 
-# 4. Info SMOTE
-smote_info = {
-    'strategy': 'auto',
-    'k_neighbors': 5,
-    'random_state': random_state,
-    'original_counts': dict(train_counts),
-    'smote_counts': dict(smote_counts),
-    'synthetic_samples': synthetic_samples,
-    'target_mapping': target_mapping,
-    'preadmission_mode': PREADMISSION_MODE
-}
-smote_info_path = os.path.join(output_dir, f'smote_info{suffix}.pkl')
-joblib.dump(smote_info, smote_info_path)
-print(f"\n Info SMOTE: {smote_info_path}")
 
-# 5. Target encoder
-target_encoder_path = os.path.join(output_dir, f'target_encoder{suffix}.pkl')
-joblib.dump(le_target, target_encoder_path)
-print(f" Target encoder: {target_encoder_path}")
 
 # ============================================================================
-# 7. VISUALIZZAZIONI SEPARATE
+# 6. VISUALIZZAZIONI
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("7. GENERAZIONE VISUALIZZAZIONI SEPARATE")
+print("6. GENERAZIONE VISUALIZZAZIONI")
 print("=" * 80)
 
-# Crea sottocartella per visualizzazioni
 viz_dir = os.path.join(output_dir, 'visualizations')
 os.makedirs(viz_dir, exist_ok=True)
 print(f"Directory visualizzazioni: {viz_dir}\n")
@@ -373,8 +241,7 @@ original_counts = df[target_col].value_counts().sort_index()
 colors_mapped = map_colors_to_labels(original_counts.index)
 bars = ax.bar(range(len(original_counts)), original_counts.values,
               color=colors_mapped, edgecolor='black', linewidth=1.5)
-ax.set_title('Dataset Originale Completo\n(4424 campioni - Sbilanciato)',
-             fontsize=16, fontweight='bold')
+ax.set_title('Dataset Originale (4424 campioni)',fontsize=16, fontweight='bold')
 ax.set_xlabel('Classe', fontsize=14)
 ax.set_ylabel('Numero Campioni', fontsize=14)
 ax.set_xticks(range(len(original_counts)))
@@ -397,8 +264,7 @@ train_before = pd.Series(y_train).map(target_mapping).value_counts().sort_index(
 train_before_colors = map_colors_to_labels(train_before.index)
 bars = ax.bar(range(len(train_before)), train_before.values,
               color=train_before_colors, edgecolor='black', linewidth=1.5)
-ax.set_title('Training Set PRIMA di SMOTE\n(3539 campioni - 80% - Sbilanciato)',
-             fontsize=16, fontweight='bold')
+ax.set_title('Training Set PRIMA di SMOTE (3539 campioni - 80%)', fontsize=16, fontweight='bold')
 ax.set_xlabel('Classe', fontsize=14)
 ax.set_ylabel('Numero Campioni', fontsize=14)
 ax.set_xticks(range(len(train_before)))
@@ -421,8 +287,7 @@ train_after = pd.Series(y_train_smote).map(target_mapping).value_counts().sort_i
 train_after_colors = map_colors_to_labels(train_after.index)
 bars = ax.bar(range(len(train_after)), train_after.values,
               color=train_after_colors, edgecolor='black', linewidth=1.5)
-ax.set_title(f'Training Set DOPO SMOTE\n({len(y_train_smote)} campioni - BILANCIATO ⭐)',
-             fontsize=16, fontweight='bold')
+ax.set_title(f'Training Set dopo SMOTE ({len(y_train_smote)} campioni)', fontsize=16, fontweight='bold')
 ax.set_xlabel('Classe', fontsize=14)
 ax.set_ylabel('Numero Campioni', fontsize=14)
 ax.set_xticks(range(len(train_after)))
@@ -445,8 +310,7 @@ test_dist = pd.Series(y_test).map(target_mapping).value_counts().sort_index()
 test_dist_colors = map_colors_to_labels(test_dist.index)
 bars = ax.bar(range(len(test_dist)), test_dist.values,
               color=test_dist_colors, edgecolor='black', linewidth=1.5)
-ax.set_title('Test Set - NON Modificato\n(885 campioni - 20% - Distribuzione Reale)',
-             fontsize=16, fontweight='bold')
+ax.set_title('Test Set (885 campioni - 20%)',fontsize=16, fontweight='bold')
 ax.set_xlabel('Classe', fontsize=14)
 ax.set_ylabel('Numero Campioni', fontsize=14)
 ax.set_xticks(range(len(test_dist)))
@@ -463,37 +327,30 @@ plt.close()
 n_viz += 1
 print(f"  {n_viz}. 04_test_set.png")
 
-print(f"\n✅ {n_viz} visualizzazioni generate")
-print(f"📁 Directory: {viz_dir}")
+print(f"\n {n_viz} visualizzazioni generate")
+print(f" Directory: {viz_dir}")
 
 # ============================================================================
 # RIEPILOGO FINALE
 # ============================================================================
-
 print("\n" + "=" * 80)
 if PREADMISSION_MODE:
-    print("PREPROCESSING PRE-IMMATRICOLAZIONE COMPLETATO!")
+    print("PREPROCESSING PRE-IMMATRICOLAZIONE COMPLETATO")
 else:
-    print("PREPROCESSING CON SMOTE COMPLETATO!")
+    print("PREPROCESSING CON SMOTE COMPLETATO")
 print("=" * 80)
 
 print(f"\nDirectory: {output_dir}\n")
 print("File generati:")
 
 if PREADMISSION_MODE:
-    print(f"  1. train_original_preadmission.csv     - Training originale (24 features)")
+    print(f"  1. train_original_preadmission.csv     - Training originale")
     print(f"  2. train_smote_preadmission.csv        - Training con SMOTE")
-    print(f"  3. test_set_preadmission.csv           - Test set (mai modificato)")
-    print(f"  4. smote_info_preadmission.pkl         - Informazioni SMOTE")
-    print(f"  5. target_encoder_preadmission.pkl     - Encoder del target")
-    print(f"  6. class_distribution_preadmission.png - Visualizzazione")
-    print(f"  7. preprocessing_report_preadmission.txt - Report completo")
+    print(f"  3. test_set_preadmission.csv           - Test set")
+    print(f"  4. visualizations/                     - Grafici e visualizzazioni")
 else:
-    print(f"  1. train_original.csv     - Training originale (sbilanciato)")
+    print(f"  1. train_original.csv     - Training originale")
     print(f"  2. train_smote.csv        - Training con SMOTE")
-    print(f"  3. test_set.csv           - Test set (mai modificato)")
-    print(f"  4. smote_info.pkl         - Informazioni SMOTE")
-    print(f"  5. target_encoder.pkl     - Encoder del target")
-    print(f"  6. class_distribution.png - Visualizzazione")
-    print(f"  7. preprocessing_report.txt - Report completo")
+    print(f"  3. test_set.csv           - Test set")
+    print(f"  4. visualizations/        - Grafici e visualizzazioni")
 plt.show()

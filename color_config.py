@@ -1,29 +1,17 @@
-"""
-Configurazione Colori Coerente per Tutte le Visualizzazioni
-============================================================
-
-Questo file centralizza tutti i colori usati nel progetto per garantire
-coerenza visiva tra tutti i grafici e visualizzazioni.
-"""
-
 # ============================================================================
 # COLORI CLASSI TARGET (Dropout, Enrolled, Graduate)
 # ============================================================================
-
-# Palette principale per le 3 classi target
 CLASS_COLORS = {
-    'Dropout': '#e74c3c',    # Rosso vibrante
-    'Enrolled': '#f39c12',   # Arancione/Ambra
-    'Graduate': '#27ae60'    # Verde smeraldo
+    'Dropout': '#e74c3c',  # Rosso
+    'Enrolled': '#f39c12',  # Arancione
+    'Graduate': '#27ae60'  # Verde
 }
 
-# Lista ordinata per grafici sequenziali
 CLASS_COLORS_LIST = ['#e74c3c', '#f39c12', '#27ae60']
 
-# Versioni più chiare per sfondi/evidenziazioni
 CLASS_COLORS_LIGHT = {
     'Dropout': '#ffebee',
-    'Enrolled': '#fff3e0', 
+    'Enrolled': '#fff3e0',
     'Graduate': '#e8f5e9'
 }
 
@@ -32,44 +20,36 @@ CLASS_COLORS_LIGHT = {
 # ============================================================================
 
 MODEL_COLORS = {
-    'Random Forest': '#3498db',  # Blu cielo
-    'RandomForest': '#3498db',   # Alias
-    'rf': '#3498db',             # Alias
-    'XGBoost': '#9b59b6',        # Viola/Porpora
-    'xgb': '#9b59b6',            # Alias
-    'XGB': '#9b59b6'             # Alias
+    'Random Forest': '#3498db',  # Blu
+    'RandomForest': '#3498db',  # Alias
+    'rf': '#3498db',  # Alias
+    'XGBoost': '#9b59b6',  # Viola
+    'xgb': '#9b59b6',  # Alias
+    'XGB': '#9b59b6'  # Alias
 }
-
-# Lista per confronti diretti
 MODEL_COLORS_LIST = ['#3498db', '#9b59b6']
-
 # ============================================================================
 # COLORI METRICHE
 # ============================================================================
-
 METRIC_COLORS = {
     'Balanced Accuracy': '#3498db',  # Blu
-    'F1-Score': '#2ecc71',           # Verde brillante
-    'Precision': '#e67e22',          # Arancione
-    'Recall': '#9b59b6',             # Viola
-    'Accuracy': '#1abc9c'            # Turchese
+    'F1-Score': '#2ecc71',  # Verde
+    'Precision': '#e67e22',  # Arancione
+    'Recall': '#9b59b6',  # Viola
+    'Accuracy': '#1abc9c'  # Turchese
 }
-
 # ============================================================================
 # PALETTE PER HEATMAPS
 # ============================================================================
-
 HEATMAP_CMAPS = {
-    'correlation': 'RdBu_r',      # Rosso-Blu (divergente, migliore per correlazioni)
-    'confusion_matrix': 'Blues',   # Blu graduato
-    'importance': 'viridis',       # Viridis (percettualmente uniforme)
-    'general': 'coolwarm'          # Alternativa per correlazioni
+    'correlation': 'RdBu_r',  # Rosso-Blu
+    'confusion_matrix': 'Blues',  # Blu graduato
+    'importance': 'viridis',  # Viridis (percettualmente uniforme)
+    'general': 'coolwarm'  # Alternativa per correlazioni
 }
-
 # ============================================================================
 # PALETTE CATEGORICHE PER ALTRI GRAFICI
 # ============================================================================
-
 # Palette qualitativa per variabili categoriche (es. nazionalità, corsi)
 CATEGORICAL_PALETTE = [
     '#3498db',  # Blu
@@ -81,13 +61,11 @@ CATEGORICAL_PALETTE = [
     '#34495e',  # Grigio scuro
     '#e67e22',  # Arancione scuro
     '#95a5a6',  # Grigio
-    '#16a085'   # Verde acqua scuro
+    '#16a085'  # Verde acqua scuro
 ]
-
 # ============================================================================
-# COLORI UI (per app Streamlit)
+# COLORI UI
 # ============================================================================
-
 UI_COLORS = {
     'background': '#f0f2f6',
     'primary': '#3498db',
@@ -97,14 +75,11 @@ UI_COLORS = {
     'danger': '#e74c3c',
     'info': '#3498db'
 }
-
 # ============================================================================
 # STILI MATPLOTLIB/SEABORN
 # ============================================================================
-
 # Stile matplotlib generale
 PLOT_STYLE = 'seaborn-v0_8-darkgrid'
-
 # Parametri comuni per tutti i grafici
 COMMON_PLOT_PARAMS = {
     'figure.facecolor': 'white',
@@ -121,25 +96,29 @@ COMMON_PLOT_PARAMS = {
     'grid.color': '#95a5a6'
 }
 
+
 # ============================================================================
 # FUNZIONI HELPER
 # ============================================================================
-
 def get_class_color(class_name):
     """Restituisce il colore per una classe target"""
     return CLASS_COLORS.get(class_name, '#95a5a6')
+
 
 def get_model_color(model_name):
     """Restituisce il colore per un modello"""
     return MODEL_COLORS.get(model_name, '#95a5a6')
 
+
 def get_class_colors_list():
     """Restituisce la lista ordinata dei colori delle classi"""
     return CLASS_COLORS_LIST
 
+
 def get_model_colors_list():
     """Restituisce la lista ordinata dei colori dei modelli"""
     return MODEL_COLORS_LIST
+
 
 def setup_plot_style():
     """Configura lo stile matplotlib per tutti i grafici"""
@@ -147,13 +126,14 @@ def setup_plot_style():
     plt.style.use(PLOT_STYLE)
     plt.rcParams.update(COMMON_PLOT_PARAMS)
 
+
 def get_categorical_palette(n=None):
     """
     Restituisce una palette categorica.
-    
+
     Args:
         n (int): Numero di colori necessari. Se None, restituisce tutta la palette.
-    
+
     Returns:
         list: Lista di codici colore hex
     """
@@ -161,17 +141,17 @@ def get_categorical_palette(n=None):
         return CATEGORICAL_PALETTE
     return CATEGORICAL_PALETTE[:n]
 
+
 # ============================================================================
 # EXPORT PER SEABORN
 # ============================================================================
-
 def get_seaborn_palette(palette_name='classes'):
     """
     Restituisce una palette compatibile con seaborn
-    
+
     Args:
         palette_name (str): 'classes', 'models', 'categorical'
-    
+
     Returns:
         list: Lista di colori
     """
@@ -183,6 +163,7 @@ def get_seaborn_palette(palette_name='classes'):
         return CATEGORICAL_PALETTE
     else:
         return CATEGORICAL_PALETTE
+
 
 def map_colors_to_labels(labels, color_dict=None):
     """
