@@ -156,7 +156,7 @@ print("\n" + "=" * 80)
 print("3. RANDOM FOREST - TRAINING CON 5-FOLD CV")
 print("=" * 80)
 
-print("\n🌲 Configurazione Random Forest:")
+print("\nConfigurazione Random Forest:")
 print("   - n_estimators: 100")
 print("   - random_state: 42")
 
@@ -325,7 +325,7 @@ for model_name, model_data in results.items():
     axes[1].set_ylabel('Actual', fontsize=13, fontweight='bold')
     axes[1].set_title(f'{model_name} - Normalized (by true label)', fontsize=14, fontweight='bold')
 
-    fig.suptitle(f'{model_name} - Confusion Matrices\nBalanced Accuracy: {model_data["test_ba"]:.4f}',
+    fig.suptitle(f'{model_name} - Confusion Matrices\n',
                  fontsize=16, fontweight='bold', y=1.02)
 
     plt.tight_layout()
