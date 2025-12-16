@@ -44,7 +44,6 @@ student-dropout-prediction/
 ├── 📄 setup_folders.py                  # Setup struttura cartelle
 ├── 📄 color_config.py                   # Configurazione palette cromatiche per le visualizzazioni
 ├── 📄 student_analysis.py               # Analisi del dataset
-├── 📄 preprocessing_smote.py            # Preprocessing mediante SMOTE
 ├── 📄 train_models.py                   # Training modelli ML
 ├── 📄 app.py                            # simulatore interattivo 
 ├── 📄 README.md                         
@@ -59,13 +58,7 @@ student-dropout-prediction/
 │   ├── feature_mappings_reverse.json
 │   └── visualizations/
 │
-├── 📂 02_preprocessing/                 # Output preprocessing - STANDARD
-│   ├── train_original.csv
-│   ├── train_smote.csv
-│   ├── test_set.csv
-│   └── visualizations/
-│
-├── 📂 03_training/                      # Output training - STANDARD
+├── 📂 02_training/                      # Output training - STANDARD
 │   ├── rf_model.pkl
 │   ├── xgb_model.pkl
 │   ├── label_encoder.pkl
@@ -78,13 +71,7 @@ student-dropout-prediction/
 │   ├── feature_mappings_reverse.json
 │   └── visualizations/
 │
-├── 📂 02_preprocessing_preadmission/    # Output preprocessing - PRE-IMMATRICOLAZIONE
-│   ├── train_original_preadmission.csv
-│   ├── train_smote_preadmission.csv
-│   ├── test_set_preadmission.csv
-│   └── visualizations/
-│
-└── 📂 03_training_preadmission/         # Output training - PRE-IMMATRICOLAZIONE
+└── 📂 02_training_preadmission/         # Output training - PRE-IMMATRICOLAZIONE
     ├── rf_model_preadmission.pkl
     ├── xgb_model_preadmission.pkl
     ├── label_encoder_preadmission.pkl
@@ -147,7 +134,6 @@ python setup_folders.py
 
 # 2. Esegui la pipeline
 python student_analysis.py
-python preprocessing_smote.py
 python train_models.py
 
 # 3. Avvia l'interfaccia web
@@ -157,7 +143,6 @@ streamlit run app.py
 ### Modalità Pre-Immatricolazione
 ```bash
 python student_analysis.py --preadmission
-python preprocessing_smote.py --preadmission
 python train_models.py --preadmission
 ```
 
@@ -189,31 +174,7 @@ python student_analysis.py --preadmission
 - `feature_mappings_reverse.json`
 - Cartella `visualizations/` con grafici
 
-### Step 3: Preprocessing con SMOTE
-
-```bash
-# Modalità STANDARD
-python preprocessing_smote.py
-# Modalità PRE-IMMATRICOLAZIONE
-python preprocessing_smote.py --preadmission
-```
-
-**Cosa fa**:
-- Split stratificato 80/20 (train/test)
-- Applica SMOTE al training set per bilanciare le classi
-- Genera visualizzazioni del bilanciamento
-
-**Output**:
-- `train_original.csv` - Training set sbilanciato (per confronto)
-- `train_smote.csv` - Training set bilanciato con SMOTE
-- `test_set.csv` - Test set (mantenuto sbilanciato)
-- Visualizzazioni del bilanciamento classi
-
-**Configurazione SMOTE**:
-- Strategy: `auto` (bilancia tutte le classi)
-- K-neighbors: 5
-
-### Step 4: Training Modelli
+### Step 3: Training Modelli
 
 ```bash
 # Modalità STANDARD
@@ -223,8 +184,8 @@ python train_models.py --preadmission
 ```
 
 **Cosa fa**:
-- Carica i dati preprocessati
-- Esegue 5-fold stratified cross-validation
+- Carica i dati
+- Esegue 5-fold stratified cross-validation e sampling SMOTE
 - Addestra Random Forest e XGBoost
 - Valuta su test set
 - Salva modelli e risultati
@@ -237,6 +198,18 @@ python train_models.py --preadmission
 - `training_results.pkl` / `training_results_preadmission.pkl`
 - Confusion matrices e grafici F1-Score
 
+### Preprocessing  SMOTE
+
+**Configurazione SMOTE**:
+- Strategy: `auto` (bilancia tutte le classi)
+- K-neighbors: 5
+
+```python
+SMOTE(
+    k_neighbors=5,
+    random_state=random_state
+)
+```
 ### Modelli Machine Learning
 
 #### Random Forest
@@ -249,11 +222,7 @@ RandomForestClassifier(
     n_jobs=-1
 )
 ```
-**Vantaggi**:
-- Robusto a overfitting
-- Gestisce bene feature categoriche
-- Interpreta feature importance
-- Non richiede scaling
+
 #### XGBoost
 **Configurazione**:
 ```python
@@ -265,10 +234,6 @@ XGBClassifier(
     eval_metric='mlogloss'
 )
 ```
-**Vantaggi**:
-- Performance superiore in molti casi
-- Gestione nativa missing values
-- Ottimizzazione gradient boosting
 
 #### Metriche di Valutazione
 - **F1-Score (macro)**: Media non pesata degli F1-Score per classe

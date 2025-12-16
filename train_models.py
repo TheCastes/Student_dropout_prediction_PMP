@@ -4,6 +4,7 @@ import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.model_selection import (
+    train_test_split,
     cross_val_score,
     StratifiedKFold,
 )
@@ -14,6 +15,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
     make_scorer
 )
+from sklearn.preprocessing import LabelEncoder
 import joblib
 import time
 import os
@@ -22,119 +24,158 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+# Importa SMOTE
+try:
+    from imblearn.over_sampling import SMOTE
+    from imblearn.pipeline import Pipeline as ImbPipeline
+except ImportError:
+    print("ERRORE: imbalanced-learn non disponibile")
+    exit(1)
+
 from color_config import (
     CLASS_COLORS_LIST,
-    MODEL_COLORS,
-    MODEL_COLORS_LIST,
+     MODEL_COLORS,
+     MODEL_COLORS_LIST,
     HEATMAP_CMAPS,
     setup_plot_style,
 )
+setup_plot_style()
+sns.set_palette(CLASS_COLORS_LIST)
+HAS_COLOR_CONFIG = True
+
 # ============================================================================
 # CONFIGURAZIONE MODALITÀ
 # ============================================================================
 PREADMISSION_MODE = '--preadmission' in sys.argv
 
-setup_plot_style()
-sns.set_palette(CLASS_COLORS_LIST)
-
-print("=" * 80)
+print("\n" + "=" * 80)
 if PREADMISSION_MODE:
-    print("TRAINING RANDOM FOREST & XGBOOST con 5-Fold Cross-Validation")
-    print("=" * 80)
-    print("\nMODALITÀ PRE-IMMATRICOLAZIONE ATTIVA")
+    print("TRAINING - MODALITÀ PRE-IMMATRICOLAZIONE")
 else:
-    print("TRAINING RANDOM FOREST & XGBOOST con 5-Fold Cross-Validation")
-    print("=" * 80)
+    print("TRAINING")
+print("=" * 80)
 
 base_dir = os.getcwd()
 
 if PREADMISSION_MODE:
-    input_dir = os.path.join(base_dir, '02_preprocessing_preadmission')
-    output_dir = os.path.join(base_dir, '03_training_preadmission')
+    output_dir = os.path.join(base_dir, '02_training_preadmission')
 else:
-    input_dir = os.path.join(base_dir, '02_preprocessing')
-    output_dir = os.path.join(base_dir, '03_training')
+    output_dir = os.path.join(base_dir, '02_training')
 
 os.makedirs(output_dir, exist_ok=True)
 
 print(f"\nDirectory base: {base_dir}")
-print(f"Input da: {input_dir}")
 print(f"Output salvati in: {output_dir}\n")
-
 # ============================================================================
-# 1. CARICAMENTO DATI
+# 1. CARICAMENTO DATASET ORIGINALE
 # ============================================================================
 print("=" * 80)
-print("1. CARICAMENTO DATI")
+print("1. CARICAMENTO DATASET")
 print("=" * 80)
 
 if PREADMISSION_MODE:
-    train_smote_path = os.path.join(input_dir, 'train_smote_preadmission.csv')
-    test_set_path = os.path.join(input_dir, 'test_set_preadmission.csv')
+    possible_files = [
+        'student_data_preadmission.csv',
+        '01_analysis_preadmission/student_data_preadmission.csv',
+        'data_preadmission.csv',
+    ]
 else:
-    train_smote_path = os.path.join(input_dir, 'train_smote.csv')
-    test_set_path = os.path.join(input_dir, 'test_set.csv')
+    possible_files = [
+        'student_data_original.csv',
+        '01_analysis/student_data_original.csv',
+        'data.csv',
+        'student_data.csv',
+    ]
 
-required_files = {
-    'train_smote.csv': train_smote_path,
-    'test_set.csv': test_set_path
-}
+csv_path = None
+for file in possible_files:
+    if os.path.exists(file):
+        csv_path = file
+        break
 
-for name, path in required_files.items():
-    if not os.path.exists(path):
-        print(f"\nErrore: File '{name}' non trovato!")
-        print(f"   Percorso atteso: {path}")
-        exit(1)
-print("\nCaricamento training set")
-train = pd.read_csv(train_smote_path)
-X_train = train.drop('Target', axis=1)
-y_train = train['Target']
+if csv_path is None:
+    print(f"\nErrore: Dataset non trovato!")
+    print(f"\nPercorsi cercati:")
+    for file in possible_files:
+        print(f"  - {file}")
+    print("\nAssicurati che il file dataset sia nella directory corrente.")
+    exit(1)
 
-print(f"Training set: {len(X_train)} campioni × {len(X_train.columns)} features")
+print(f"\nCaricamento: {csv_path}")
+df = pd.read_csv(csv_path)
+print(f"   Dataset caricato: {len(df)} studenti, {len(df.columns)} variabili")
 
-print("\nCaricamento test set...")
-test = pd.read_csv(test_set_path)
-X_test = test.drop('Target', axis=1)
-y_test = test['Target']
+if 'Target' not in df.columns:
+    print(f"\nErrore: Colonna 'Target' non trovata!")
+    print(f"Colonne disponibili: {df.columns.tolist()}")
+    exit(1)
 
-print(f"Test set: {len(X_test)} campioni × {len(X_test.columns)} features")
+print(f"\nDistribuzione classi nel dataset completo:")
+target_dist = df['Target'].value_counts().sort_index()
+for cls, count in target_dist.items():
+    pct = count / len(df) * 100
+    print(f"  {cls:15s}: {count:5d} ({pct:5.2f}%)")
 
-classes = sorted(y_train.unique())
-print(f"\nClassi target: {classes}")
+# ============================================================================
+# 2. SPLIT TRAIN/TEST (80/20 STRATIFICATO)
+# ============================================================================
+print("\n" + "=" * 80)
+print("2. SPLIT TRAIN/TEST - 80/20 STRATIFICATO")
+print("=" * 80)
 
+X = df.drop('Target', axis=1)
+y = df['Target']
+
+test_size = 0.20
+random_state = 42
+
+print(f"\nParametri split:")
+print(f"  • Test size: {test_size*100:.0f}%")
+print(f"  • Random state: {random_state}")
+print(f"  • Stratificazione: Sì")
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=test_size,
+    random_state=random_state,
+    stratify=y
+)
+
+print(f"\nSplit completato:")
+print(f"  • Training: {len(X_train)} campioni ({(1-test_size)*100:.0f}%)")
+print(f"  • Test:     {len(X_test)} campioni ({test_size*100:.0f}%)")
+
+# Distribuzione training
+print(f"\nDistribuzione training set:")
 train_dist = y_train.value_counts().sort_index()
-print(f"\nDistribuzione training:")
-for cls in classes:
-    count = train_dist[cls]
+for cls, count in train_dist.items():
     pct = count / len(y_train) * 100
     print(f"  {cls:15s}: {count:5d} ({pct:5.2f}%)")
 
+print(f"\nDistribuzione test set:")
 test_dist = y_test.value_counts().sort_index()
-print(f"\nDistribuzione test:")
-for cls in classes:
-    count = test_dist[cls]
+for cls, count in test_dist.items():
     pct = count / len(y_test) * 100
     print(f"  {cls:15s}: {count:5d} ({pct:5.2f}%)")
 
-print(f"\nEncoding classi per XGBoost...")
-from sklearn.preprocessing import LabelEncoder
+feature_names = X_train.columns.tolist()
+print(f"\nFeatures: {len(feature_names)} variabili")
 
+print(f"\nEncoding classi per XGBoost...")
 le = LabelEncoder()
 y_train_encoded = le.fit_transform(y_train)
 y_test_encoded = le.transform(y_test)
+classes = sorted(y_train.unique())
 print(f"   Mapping: {dict(enumerate(le.classes_))}")
 
 # ============================================================================
-# 2. CONFIGURAZIONE CROSS-VALIDATION
+# 3. CONFIGURAZIONE CROSS-VALIDATION
 # ============================================================================
-
 print("\n" + "=" * 80)
-print("2. CONFIGURAZIONE 5-FOLD CROSS-VALIDATION")
+print("3. CONFIGURAZIONE 5-FOLD CROSS-VALIDATION")
 print("=" * 80)
 
 n_folds = 5
-random_state = 42
-
 cv = StratifiedKFold(
     n_splits=n_folds,
     shuffle=True,
@@ -149,30 +190,28 @@ print(f"Random state: {random_state}")
 scorer = make_scorer(balanced_accuracy_score)
 
 # ============================================================================
-# 3. RANDOM FOREST - TRAINING & CV
+# 4. RANDOM FOREST - TRAINING & CV
 # ============================================================================
-
 print("\n" + "=" * 80)
-print("3. RANDOM FOREST - TRAINING CON 5-FOLD CV")
+print("4. RANDOM FOREST - TRAINING CON 5-FOLD CV")
 print("=" * 80)
 
-print("\nConfigurazione Random Forest:")
-print("   - n_estimators: 100")
-print("   - random_state: 42")
-
-rf_base = RandomForestClassifier(
-    n_estimators=100,
-    random_state=random_state,
-    n_jobs=-1
-)
+rf_pipeline = ImbPipeline([
+    ('smote', SMOTE(k_neighbors=5, random_state=random_state)),
+    ('classifier', RandomForestClassifier(
+        n_estimators=100,
+        random_state=random_state,
+        n_jobs=-1
+    ))
+])
 
 print(f"\nCross-validation in corso ({n_folds} folds)...")
 start_time = time.time()
 
 rf_cv_scores = cross_val_score(
-    rf_base,
+    rf_pipeline,
     X_train,
-    y_train,  # Random Forest accetta stringhe
+    y_train,
     cv=cv,
     scoring=scorer,
     n_jobs=-1
@@ -180,56 +219,45 @@ rf_cv_scores = cross_val_score(
 
 rf_cv_time = time.time() - start_time
 
-print(f"Cross-validation completata in {rf_cv_time:.2f}s")
-print(f"\nRisultati CV:")
-print(f"   Balanced Accuracy: {rf_cv_scores.mean():.4f} (+/- {rf_cv_scores.std():.4f})")
-print(f"   Scores per fold: {[f'{s:.4f}' for s in rf_cv_scores]}")
-
-print(f"\nTraining sul full training set...")
+print(f"\nTraining finale sul training set...")
 start_time = time.time()
 
-rf_base.fit(X_train, y_train)
+rf_pipeline.fit(X_train, y_train)
 
 rf_train_time = time.time() - start_time
 print(f"Training completato in {rf_train_time:.2f}s")
 
-print(f"\nValutazione su test set...")
-rf_test_pred = rf_base.predict(X_test)
+print(f"\nValutazione su test set:")
+rf_test_pred = rf_pipeline.predict(X_test)
 rf_test_ba = balanced_accuracy_score(y_test, rf_test_pred)
 rf_test_f1 = f1_score(y_test, rf_test_pred, average='macro')
 
-print(f"Test Balanced Accuracy: {rf_test_ba:.4f}")
-print(f"Test F1-Score (macro): {rf_test_f1:.4f}")
+print(f"  • Test F1-Score (macro):  {rf_test_f1:.4f}")
 
 # ============================================================================
-# 4. XGBOOST - TRAINING & CV
+# 5. XGBOOST - TRAINING & CV
 # ============================================================================
-
 print("\n" + "=" * 80)
-print("4. XGBOOST - TRAINING CON 5-FOLD CV")
+print("5. XGBOOST - TRAINING CON 5-FOLD CV")
 print("=" * 80)
 
-print("\nConfigurazione XGBoost:")
-print("   - n_estimators: 100")
-print("   - learning_rate: 0.1")
-print("   - max_depth: 6")
-print("   - eval_metric: mlogloss")
-print("   - random_state: 42")
-
-# Modello base
-xgb_base = XGBClassifier(
-    n_estimators=100,
-    learning_rate=0.1,
-    max_depth=6,
-    random_state=random_state,
-    eval_metric='mlogloss'
-)
+xgb_pipeline = ImbPipeline([
+    ('smote', SMOTE(k_neighbors=5, random_state=random_state)),
+    ('classifier', XGBClassifier(
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=6,
+        random_state=random_state,
+        eval_metric='mlogloss'
+    ))
+])
 
 print(f"\nCross-validation in corso ({n_folds} folds)...")
+
 start_time = time.time()
 
 xgb_cv_scores = cross_val_score(
-    xgb_base,
+    xgb_pipeline,
     X_train,
     y_train_encoded,
     cv=cv,
@@ -239,28 +267,22 @@ xgb_cv_scores = cross_val_score(
 
 xgb_cv_time = time.time() - start_time
 
-print(f"Cross-validation completata in {xgb_cv_time:.2f}s")
-print(f"\nRisultati CV:")
-print(f"   Balanced Accuracy: {xgb_cv_scores.mean():.4f} (+/- {xgb_cv_scores.std():.4f})")
-print(f"   Scores per fold: {[f'{s:.4f}' for s in xgb_cv_scores]}")
-
-print(f"\nTraining sul full training set...")
+print(f"\nTraining finale sul training set...")
 start_time = time.time()
 
-xgb_base.fit(X_train, y_train_encoded)
+xgb_pipeline.fit(X_train, y_train_encoded)
 
 xgb_train_time = time.time() - start_time
 print(f"Training completato in {xgb_train_time:.2f}s")
 
 # Valutazione su test set
-print(f"\nValutazione su test set...")
-xgb_test_pred_encoded = xgb_base.predict(X_test)
-xgb_test_pred = le.inverse_transform(xgb_test_pred_encoded)  # Decodifica per le metriche
+print(f"\nValutazione su test set:")
+xgb_test_pred_encoded = xgb_pipeline.predict(X_test)
+xgb_test_pred = le.inverse_transform(xgb_test_pred_encoded)
 xgb_test_ba = balanced_accuracy_score(y_test, xgb_test_pred)
 xgb_test_f1 = f1_score(y_test, xgb_test_pred, average='macro')
 
-print(f"Test Balanced Accuracy: {xgb_test_ba:.4f}")
-print(f"Test F1-Score (macro): {xgb_test_f1:.4f}")
+print(f"  • Test F1-Score (macro):  {xgb_test_f1:.4f}")
 
 results = {
     'Random Forest': {
@@ -272,7 +294,7 @@ results = {
         'cv_time': rf_cv_time,
         'train_time': rf_train_time,
         'predictions': rf_test_pred,
-        'model': rf_base
+        'pipeline': rf_pipeline
     },
     'XGBoost': {
         'cv_mean': xgb_cv_scores.mean(),
@@ -283,16 +305,14 @@ results = {
         'cv_time': xgb_cv_time,
         'train_time': xgb_train_time,
         'predictions': xgb_test_pred,
-        'model': xgb_base
+        'pipeline': xgb_pipeline
     }
 }
-
 # ============================================================================
-# 8. VISUALIZZAZIONI
+# 7. VISUALIZZAZIONI
 # ============================================================================
-
 print("\n" + "=" * 80)
-print("8. GENERAZIONE VISUALIZZAZIONI")
+print("7. GENERAZIONE VISUALIZZAZIONI")
 print("=" * 80)
 
 viz_dir = os.path.join(output_dir, 'visualizations')
@@ -301,8 +321,8 @@ print(f"Directory visualizzazioni: {viz_dir}\n")
 
 n_viz = 0
 
-# 8.1 Confusion Matrices
-print("Generazione confusion matrices (assolute e normalizzate)...")
+# 7.1 Confusion Matrices
+print("Generazione confusion matrices...")
 for model_name, model_data in results.items():
     safe_name = model_name.lower().replace(' ', '_')
     y_pred = model_data['predictions']
@@ -335,7 +355,7 @@ for model_name, model_data in results.items():
     n_viz += 1
     print(f"  {n_viz}. {os.path.basename(cm_path)}")
 
-# 8.2 F1-Score per Classe
+# 7.2 F1-Score per Classe
 print("\nGenerazione F1-Score per classe...")
 for model_name, model_data in results.items():
     safe_name = model_name.lower().replace(' ', '_')
@@ -370,44 +390,34 @@ for model_name, model_data in results.items():
     n_viz += 1
     print(f"  {n_viz}. {os.path.basename(f1_path)}")
 
-print(f"\n {n_viz} visualizzazioni generate")
-print(f" Directory: {viz_dir}")
+print(f"\n{n_viz} visualizzazioni generate")
+print(f"Directory: {viz_dir}")
 
 # ============================================================================
-# 9. SALVATAGGIO MODELLI
+# 8. SALVATAGGIO MODELLI E RISULTATI
 # ============================================================================
-
 print("\n" + "=" * 80)
-print("9. SALVATAGGIO MODELLI")
+print("8. SALVATAGGIO MODELLI E RISULTATI")
 print("=" * 80)
 
-if PREADMISSION_MODE:
-    rf_path = os.path.join(output_dir, 'rf_model_preadmission.pkl')
-else:
-    rf_path = os.path.join(output_dir, 'rf_model.pkl')
-joblib.dump(rf_base, rf_path)
-print(f"\nRandom Forest salvato: {rf_path}")
+suffix = '_preadmission' if PREADMISSION_MODE else ''
 
-if PREADMISSION_MODE:
-    xgb_path = os.path.join(output_dir, 'xgb_model_preadmission.pkl')
-else:
-    xgb_path = os.path.join(output_dir, 'xgb_model.pkl')
-joblib.dump(xgb_base, xgb_path)
-print(f"XGBoost salvato: {xgb_path}")
+rf_path = os.path.join(output_dir, f'rf_model{suffix}.pkl')
+joblib.dump(rf_pipeline, rf_path)
+print(f"\nRandom Forest: {rf_path}")
 
-if PREADMISSION_MODE:
-    features_path = os.path.join(output_dir, 'feature_names_preadmission.pkl')
-else:
-    features_path = os.path.join(output_dir, 'feature_names.pkl')
-joblib.dump(X_train.columns.tolist(), features_path)
-print(f"Feature names salvati: {features_path}")
+xgb_path = os.path.join(output_dir, f'xgb_model{suffix}.pkl')
+joblib.dump(xgb_pipeline, xgb_path)
+print(f"XGBoost: {xgb_path}")
 
-if PREADMISSION_MODE:
-    le_path = os.path.join(output_dir, 'label_encoder_preadmission.pkl')
-else:
-    le_path = os.path.join(output_dir, 'label_encoder.pkl')
+features_path = os.path.join(output_dir, f'feature_names{suffix}.pkl')
+joblib.dump(feature_names, features_path)
+print(f"Feature names: {features_path}")
+
+# Salva label encoder
+le_path = os.path.join(output_dir, f'label_encoder{suffix}.pkl')
 joblib.dump(le, le_path)
-print(f"Label encoder salvato: {le_path}")
+print(f"Label encoder: {le_path}")
 
 results_data = {
     'random_forest': {
@@ -415,25 +425,45 @@ results_data = {
         'cv_mean': float(rf_cv_scores.mean()),
         'cv_std': float(rf_cv_scores.std()),
         'test_ba': float(rf_test_ba),
-        'test_f1': float(rf_test_f1)
+        'test_f1': float(rf_test_f1),
+        'gap_cv_test': float(abs(rf_cv_scores.mean() - rf_test_ba)),
+        'cv_time': float(rf_cv_time),
+        'train_time': float(rf_train_time)
     },
     'xgboost': {
         'cv_scores': xgb_cv_scores.tolist(),
         'cv_mean': float(xgb_cv_scores.mean()),
         'cv_std': float(xgb_cv_scores.std()),
         'test_ba': float(xgb_test_ba),
-        'test_f1': float(xgb_test_f1)
+        'test_f1': float(xgb_test_f1),
+        'gap_cv_test': float(abs(xgb_cv_scores.mean() - xgb_test_ba)),
+        'cv_time': float(xgb_cv_time),
+        'train_time': float(xgb_train_time)
     },
-    'classes': classes
+    'classes': classes,
+    'feature_names': feature_names,
+    'split_info': {
+        'test_size': test_size,
+        'random_state': random_state,
+        'n_train': len(X_train),
+        'n_test': len(X_test),
+        'n_features': len(feature_names)
+    },
 }
 
-if PREADMISSION_MODE:
-    results_pkl_path = os.path.join(output_dir, 'training_results_preadmission.pkl')
-else:
-    results_pkl_path = os.path.join(output_dir, 'training_results.pkl')
+results_path = os.path.join(output_dir, f'training_results{suffix}.pkl')
+joblib.dump(results_data, results_path)
+test_results_df = pd.DataFrame({
+    'True_Label': y_test,
+    'RF_Prediction': rf_test_pred,
+    'XGB_Prediction': xgb_test_pred,
+    'RF_Correct': (y_test == rf_test_pred).astype(int),
+    'XGB_Correct': (y_test == xgb_test_pred).astype(int)
+})
+test_csv_path = os.path.join(output_dir, f'test_predictions{suffix}.csv')
+test_results_df.to_csv(test_csv_path, index=False)
+print(f"Predizioni test set: {test_csv_path}")
 
-joblib.dump(results_data, results_pkl_path)
-print(f"Risultati salvati: {results_pkl_path}")
 # ============================================================================
 # RIEPILOGO FINALE
 # ============================================================================
@@ -441,29 +471,16 @@ print("\n" + "=" * 80)
 if PREADMISSION_MODE:
     print("TRAINING PRE-IMMATRICOLAZIONE COMPLETATO")
 else:
-    print("TRAINING COMPLETATO")
+    print("TRAINING COMPLETATO CON SUCCESSO")
 print("=" * 80)
 
 print(f"\nDirectory: {output_dir}\n")
 print("File generati:")
-if PREADMISSION_MODE:
-    print(f"  1. rf_model_preadmission.pkl            - Random Forest trainato")
-    print(f"  2. xgb_model_preadmission.pkl           - XGBoost trainato")
-    print(f"  3. feature_names_preadmission.pkl       - Nomi delle features")
-    print(f"  4. label_encoder_preadmission.pkl       - Label encoder")
-    print(f"  5. training_results_preadmission.pkl    - Risultati in formato pickle")
-    print(f"  6. confusion_matrices_random_forest_preadmission.png  - Confusion matrices")
-    print(f"  7. confusion_matrices_xgboost_preadmission.png  - Confusion matrices")
-    print(f"  8. f1_score_by_class_random_forest_preadmission.png  - f1 score")
-    print(f"  9. f1_score_by_class_xgboost_preadmission.png  - f1 score")
-
-else:
-    print(f"  1. rf_model.pkl            - Random Forest trainato")
-    print(f"  2. xgb_model.pkl           - XGBoost trainato")
-    print(f"  3. feature_names.pkl       - Nomi delle features")
-    print(f"  4. label_encoder.pkl       - Label encoder")
-    print(f"  5. training_results.pkl    - Risultati in formato pickle")
-    print(f"  6. confusion_matrices_random_forest.png  - Confusion matrices")
-    print(f"  7. confusion_matrices_xgboost.png  - Confusion matrices")
-    print(f"  8. f1_score_by_class_random_forest.png  - f1 score")
-    print(f"  9. f1_score_by_class_xgboost.png  - f1 score")
+print(f"  1. rf_model{suffix}.pkl              - Modello RF")
+print(f"  2. xgb_model{suffix}.pkl             - Modello XGB")
+print(f"  3. feature_names{suffix}.pkl            - Nomi features")
+print(f"  4. label_encoder{suffix}.pkl            - Encoder classi")
+print(f"  5. training_results{suffix}.pkl         - Risultati dettagliati")
+print(f"  6. test_predictions{suffix}.csv         - Predizioni su test set")
+print(f"  7. visualizations/                      - {n_viz} grafici generati")
+print("\n" + "=" * 80)

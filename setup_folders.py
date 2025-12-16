@@ -3,11 +3,9 @@ STRUTTURA CREATA:
 =================
 project/
 ├── 01_analysis/                       # Output di student_analysis.py
-├── 02_preprocessing/                  # Output di preprocessing_smote.py
-├── 03_training/                       # Output di train_models.py
+├── 02_training/                       # Output di train_models.py
 ├── 01_analysis_preadmission/          # Output di student_analysis.py --preadmission
-├── 02_preprocessing_preadmission/     # Output di preprocessing_smote.py --preadmission
-├── 03_training_preadmission/          # Output di train_models.py --preadmission
+├── 02_training_preadmission/          # Output di train_models.py --preadmission
 └── data/                              # Dataset originale
 """
 
@@ -22,11 +20,9 @@ def create_folder_structure():
     print(f"\nDirectory base: {base_dir}\n")
     folders = {
         '01_analysis': 'Output analisi esplorativa dataset - COMPLETO',
-        '02_preprocessing': 'Output preprocessing con SMOTE - COMPLETO',
-        '03_training': 'Output training modelli ML - COMPLETO',
+        '02_training': 'Output training modelli ML - COMPLETO',
         '01_analysis_preadmission': 'Output analisi - PRE-IMMATRICOLAZIONE',
-        '02_preprocessing_preadmission': 'Output preprocessing - PRE-IMMATRICOLAZIONE',
-        '03_training_preadmission': 'Output training - PRE-IMMATRICOLAZIONE',
+        '02_training_preadmission': 'Output training - PRE-IMMATRICOLAZIONE',
         'data': 'Dataset  UCI'
     }
     print("Creazione cartelle...")

@@ -77,14 +77,14 @@ else:
 def load_models(mode="standard"):
     try:
         if mode == "preadmission":
-            base_path = Path('03_training_preadmission')
+            base_path = Path('02_training_preadmission')
             rf_file = 'rf_model_preadmission.pkl'
             xgb_file = 'xgb_model_preadmission.pkl'
             encoder_file = 'label_encoder_preadmission.pkl'
             features_file = 'feature_names_preadmission.pkl'
             results_file = 'training_results_preadmission.pkl'
         else:
-            base_path = Path('03_training')
+            base_path = Path('02_training')
             rf_file = 'rf_model.pkl'
             xgb_file = 'xgb_model.pkl'
             encoder_file = 'label_encoder.pkl'
